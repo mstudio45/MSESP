@@ -136,9 +136,9 @@ export type ESPSettings = {
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local CoreGui = cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")
 
 -- // Variables // --
-
 local tablefreeze = function<T>(provided_table: T): T
 	local proxy = {}
 	local data = table.clone(provided_table)
@@ -159,20 +159,15 @@ end
 local gethui = getgenv().gethui
 do
 	local testGui = Instance.new("ScreenGui")
-
 	local successful = pcall(function()
-		testGui.Parent = (gethui and gethui)
-			or (cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui"))
+		testGui.Parent = (gethui and gethui()) or CoreGui
 	end)
 
-	if successful then
-		-- your implementation sucks bro
+	if not successful then
 		gethui = function()
 			return Players.LocalPlayer.PlayerGui
 		end
 	else
-		local CoreGui = cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")
-
 		gethui = gethui or function()
 			return CoreGui
 		end
