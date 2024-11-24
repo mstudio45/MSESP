@@ -20,7 +20,7 @@ if global().mstudio45 and global().mstudio45.ESPLibrary then
 end
 
 local __DEBUG = false;
-local __LOG = global.environnement and global.environnement == "DEV" or false;
+local __LOG = global().environnement and global().environnement == "DEV" or false;
 local __PREFIX = "mstudio45's ESP"
 
 local Library = {
