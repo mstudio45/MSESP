@@ -421,8 +421,6 @@ function Library:Add(espSettings: ESPSettings)
     espSettings.ESPType = string.lower(espSettings.ESPType);
     assert(AllowedESPType[espSettings.ESPType] == true, "espSettings.ESPType; invalid ESPType");
 
-    debug_print("Creating ESP...", ESP.Index);
-
     -- // Fix Settings // --
     espSettings.Name = typeof_(espSettings.Name) == "string" and espSettings.Name or espSettings.Model.Name;
     espSettings.TextModel = typeof_(espSettings.TextModel) == "Instance" and espSettings.TextModel or espSettings.Model;
@@ -456,6 +454,8 @@ function Library:Add(espSettings: ESPSettings)
         Deleted = false;
         Connections = {};
     }
+
+    debug_print("Creating ESP...", ESP.Index);
 
     -- // Create Billboard // --
     local Billboard = InstancesLib.Create("BillboardGui", {
