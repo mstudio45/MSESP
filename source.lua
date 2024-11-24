@@ -12,6 +12,21 @@
                         Created by mstudio45 (Discord)
 --]]
 
+warn([[
+
+         ▄▄▄▄███▄▄▄▄      ▄████████         ▄████████    ▄████████    ▄███████▄
+        ▄██▀▀▀███▀▀▀██▄   ███    ███        ███    ███   ███    ███   ███    ███
+        ███   ███   ███   ███    █▀         ███    █▀    ███    █▀    ███    ███
+        ███   ███   ███   ███              ▄███▄▄▄       ███          ███    ███
+        ███   ███   ███ ▀███████████      ▀▀███▀▀▀     ▀███████████ ▀█████████▀
+        ███   ███   ███          ███        ███    █▄           ███   ███
+        ███   ███   ███    ▄█    ███        ███    ███    ▄█    ███   ███
+        ▀█   ███   █▀   ▄████████▀         ██████████  ▄████████▀   ▄████▀
+
+                   ⚠ WARNING ⚠ - You are using an outdated version!
+                 Please check docs.mstudio45.com for more information.
+]])
+
 -- local getgenvFunc = typeof(getgenv) == "function" and getgenv;
 local global = getgenv; -- function() return getgenvFunc and getgenvFunc() or _G; end
 
