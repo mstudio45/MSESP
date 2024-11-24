@@ -8,6 +8,7 @@
         -- General Settings --
         Visible : boolean [optional]
         Color : Color3 [default = Color3.new]
+        MaxDistance : number [optional, default = 5000]
         
         -- Billboard Settings --
         StudsOffset : Vector3 [optional]
@@ -47,6 +48,10 @@
             Color : Color3 [optional, default = Color3.new]
             CenterOffset : number [optional, default = 300]
         }
+
+        -- OnDestroy Settings --
+        OnDestroy : BindableEvent [optional]
+        OnDestroyFunc : function [optional]
     })
 --]]
 
@@ -77,6 +82,7 @@ export type ESPSettings = {
 
     Visible: boolean?,
     Color: Color3?,
+    MaxDistance: number?,
 
     StudsOffset: Vector3?,
     TextSize: number?,
