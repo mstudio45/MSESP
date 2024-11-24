@@ -648,11 +648,9 @@ function Library:Add(espSettings: ESPSettings)
 	end
 
 	-- // Create Tracer and Arrow // --
-	local Tracer = (typeof(ESP.OriginalSettings.Tracer) == "table" and ESP.OriginalSettings.Tracer.Enabled == true)
-			and TracerCreate(ESP.CurrentSettings.Tracer)
-		or nil
-	local Arrow = nil
-	if typeof(ESP.OriginalSettings.Arrow) == "table" and ESP.OriginalSettings.Arrow.Enabled == true then
+	local Tracer = typeof(ESP.OriginalSettings.Tracer) == "table" and TracerCreate(ESP.CurrentSettings.Tracer) or nil;
+	local Arrow = nil;
+	if typeof(ESP.OriginalSettings.Arrow) == "table" then
 		debug_print("Creating Arrow...", ESP.Index)
 		Arrow = InstancesLib.Create("ImageLabel", {
 			Parent = MainGUI,
@@ -799,7 +797,8 @@ function Library:Add(espSettings: ESPSettings)
 
 		-- // Update Arrow (only requires distance check) // --
 		if Arrow then
-			if Library.GlobalConfig.Arrows == true and isOnScreen ~= true then
+                        Arrow.Visible = (not not Library.GlobalConfig.Arrows) and (not not ESP.CurrentSettings.Arrow.Enabled)
+			if Library.GlobalConfig.Arrows and not isOnScreen then
 				local screenSize = camera.ViewportSize
 				local centerPos = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
 
@@ -824,12 +823,8 @@ function Library:Add(espSettings: ESPSettings)
 					0,
 					centerPos.Y + (distance * math.sin(arctan) * invert)
 				)
-				Arrow.Visible = true
-
 				Arrow.ImageColor3 = Library.GlobalConfig.Rainbow and Library.RainbowColor
 					or ESP.CurrentSettings.Arrow.Color
-			else
-				Arrow.Visible = false
 			end
 		end
 
@@ -842,7 +837,7 @@ function Library:Add(espSettings: ESPSettings)
 
 		-- // Update Tracer // --
 		if Tracer then
-			Tracer.Visible = not not Library.GlobalConfig.Tracers
+			Tracer.Visible = (not not Library.GlobalConfig.Tracers) and (not not ESP.CurrentSettings.Tracer.Enabled)
 
 			if Library.GlobalConfig.Tracers then
 				if ESP.CurrentSettings.Tracer.From == "mouse" then
@@ -866,7 +861,6 @@ function Library:Add(espSettings: ESPSettings)
 		end
 
 		-- // Update Billboard // --
-
 		Billboard.Enabled = not not Library.GlobalConfig.Billboards
 
 		if Library.GlobalConfig.Billboards then
