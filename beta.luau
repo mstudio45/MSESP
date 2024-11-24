@@ -283,7 +283,7 @@ local Library = {
 function Library:Clear()
     for _, ESP in pairs(Library.ESP) do
         if not ESP then continue end
-        ESP:Delete();
+        ESP:Destroy();
     end
 end
 
@@ -547,26 +547,28 @@ function Library:Add(espSettings: ESPSettings)
 
     -- // Create Tracer and Arrow // --
     local Tracer = typeof_(ESP.CurrentSettings.Tracer) == "table" and TracerCreate(ESP.CurrentSettings.Tracer) or nil;
-    local Arrow = typeof_(ESP.CurrentSettings.Arrow) == "table" and ESP.CurrentSettings.Arrow.Enabled == true and InstancesLib.Create("ImageLabel", {
-        Parent = MainGUI;
+    local Arrow = nil
+    if typeof_(ESP.CurrentSettings.Arrow) == "table" and ESP.CurrentSettings.Arrow.Enabled == true then
+        Arrow = InstancesLib.Create("ImageLabel", {
+            Parent = MainGUI;
 
-        Size = UDim2.new(0, 48, 0, 48);
-        SizeConstraint = Enum.SizeConstraint.RelativeYY;
+            Size = UDim2.new(0, 48, 0, 48);
+            SizeConstraint = Enum.SizeConstraint.RelativeYY;
 
-        AnchorPoint = Vec2_new(0.5, 0.5);
+            AnchorPoint = Vec2_new(0.5, 0.5);
 
-        BackgroundTransparency = 1;
-        BorderSizePixel = 0;
+            BackgroundTransparency = 1;
+            BorderSizePixel = 0;
 
-        Image = "http://www.roblox.com/asset/?id=16368985219";
-        ImageColor3 = ESP.CurrentSettings.Color or Color3_new();
-    });
-    if typeof_(ESP.CurrentSettings.Arrow) == "table" then
+            Image = "http://www.roblox.com/asset/?id=16368985219";
+            ImageColor3 = ESP.CurrentSettings.Color or Color3_new();
+        });
+
         ESP.CurrentSettings.Arrow.CenterOffset = typeof_(ESP.CurrentSettings.Arrow.CenterOffset) == "number" and ESP.CurrentSettings.Arrow.CenterOffset or 300;
     end
 
     -- // Setup Delete Handler // --
-    function ESP:Delete()
+    function ESP:Destroy()
         if ESP.Deleted == true then return end;
         if tablefind(Library.ESP, ESP.Index) then tableremove(Library.ESP, tablefind(Library.ESP, ESP.Index)); end
         Library.ESP[ESP.Index] = nil;
@@ -574,7 +576,7 @@ function Library:Add(espSettings: ESPSettings)
         if Billboard ~= nil then Billboard:Destroy(); end
         if Highlighter ~= nil then Highlighter:Destroy(); end
         if Tracer ~= nil then Tracer:Destroy(); end
-        if Arrow ~= nil then Arrow:Destroy(); end
+        if typeof(Arrow) == "Instance" then Arrow:Destroy(); end
 
         for Idx = #ESP.Connections, 1, -1 do
             local Connection = table.remove(ESP.Connections, Idx)
@@ -638,7 +640,7 @@ function Library:Add(espSettings: ESPSettings)
         end
 
         -- // Update Arrow (only requires distance check) // --
-        if Arrow ~= nil then
+        if typeof(Arrow) == "Instance" then
             if Library.GlobalConfig.Arrows == true and isOnScreen ~= true then
                 local screenSize = camera.ViewportSize;
                 local centerPos = Vec2_new(screenSize.X / 2, screenSize.Y / 2);
@@ -784,7 +786,7 @@ tableinsert(Library.Connections, RunService.RenderStepped:Connect(function()
     for _, ESP in pairs(Library.ESP) do
         if not ESP then continue end
         if ESP.CurrentSettings.Model == nil or ESP.CurrentSettings.Model.Parent == nil then 
-            ESP:Delete();
+            ESP:Destroy();
             continue
         end;
 
