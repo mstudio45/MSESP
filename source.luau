@@ -1,4 +1,18 @@
 --[[
+
+         ▄▄▄▄███▄▄▄▄      ▄████████         ▄████████    ▄████████    ▄███████▄
+        ▄██▀▀▀███▀▀▀██▄   ███    ███        ███    ███   ███    ███   ███    ███
+        ███   ███   ███   ███    █▀         ███    █▀    ███    █▀    ███    ███
+        ███   ███   ███   ███              ▄███▄▄▄       ███          ███    ███
+        ███   ███   ███ ▀███████████      ▀▀███▀▀▀     ▀███████████ ▀█████████▀
+        ███   ███   ███          ███        ███    █▄           ███   ███
+        ███   ███   ███    ▄█    ███        ███    ███    ▄█    ███   ███
+        ▀█   ███   █▀   ▄████████▀         ██████████  ▄████████▀   ▄████▀
+
+                        Created by mstudio45 (Discord)
+--]]
+
+--[[
     ESPLib:Add({
         Name : string [optional]
 
@@ -129,9 +143,9 @@ local tableinsert = table.insert;
 local tableclone = table.clone;
 local tableremove = table.remove;
 local tablefind = table.find;
-local tablefreeze = function(table)
+local tablefreeze = function(provided_table)
     local proxy = {};
-    local data = tableclone(table);
+    local data = tableclone(provided_table);
 
     local mt = {
         __index = function(table, key)
@@ -143,7 +157,7 @@ local tablefreeze = function(table)
         end
     }
 
-    return setmetatable(proxy, mt) :: typeof(table)
+    return setmetatable(proxy, mt) :: typeof(provided_table)
 end;
 
 local stringchar = string.char;
