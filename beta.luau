@@ -96,7 +96,8 @@ export type ESPSettings = {
     Tracer: TracerESPSettings?,
     Arrow: ArrowESPSettings?,
 
-    OnDestroy: BindableEvent?
+    OnDestroy: BindableEvent?,
+    OnDestroyFunc: (() -> nil)?
 }
 
 -- // Variables // --
@@ -581,6 +582,10 @@ function Library:Add(espSettings: ESPSettings)
 
         if ESP.OriginalSettings.OnDestroy ~= nil then
             ESP.OriginalSettings.OnDestroy:Fire();
+        end
+
+        if ESP.OriginalSettings.OnDestroyFunc ~= nil then
+            ESP.OriginalSettings.OnDestroyFunc();
         end
     end
 
