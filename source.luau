@@ -266,7 +266,8 @@ local rootPart: Part?
 local camera: Camera
 
 local worldToViewport = function(...)
-	if workspace.CurrentCamera == nil then
+	camera = (camera or workspace.CurrentCamera)
+        if camera == nil then
 		return Vector2.new(0, 0), false
 	end
 
