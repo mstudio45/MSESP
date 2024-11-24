@@ -11,7 +11,8 @@
         ███   ███   ███    ▄█    ███        ███    ███    ▄█    ███   ███
         ▀█   ███   █▀   ▄████████▀         ██████████  ▄████████▀   ▄████▀
 
-                        Created by mstudio45 (Discord)
+                         Created by mstudio45 (Discord)
+                       Contributors: Dottik, Master Oogway
 --]]
 
 --[[
