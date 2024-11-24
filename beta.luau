@@ -55,7 +55,16 @@
     })
 --]]
 
-if getgenv().mstudio45_ESP then return getgenv().mstudio45_ESP; end;
+local function debug_print(...)
+    if getgenv().mstudio45_ESP_DEBUG == true then
+        print("[mstudio45's ESP]", ...);
+    end
+end
+
+if getgenv().mstudio45_ESP then
+    debug_print("Already Loaded.");
+    return getgenv().mstudio45_ESP;
+end;
 
 -- // Type Definitions // --
 export type TracerESPSettings = {
@@ -160,8 +169,9 @@ local gethui = typeof_(gethui) == "function" and gethui or (function() return Co
 local Players = getService("Players");
 local RunService = getService("RunService");
 local UserInputService = getService("UserInputService");
-local GuiService = getService("GuiService");
+-- local GuiService = getService("GuiService");
 local HiddenUI = (function()
+    debug_print("Getting Hidden UI...");
     local TestGUI = Instance_new("ScreenGui");
 
     local parented = pcall_(function() TestGUI.Parent = gethui(); end);
@@ -244,6 +254,8 @@ local worldToViewport;
 
 -- // Functions // --
 local function UpdatePlayerVariables()
+    debug_print("Updating Player Variables...");
+
     character = character or (Players.LocalPlayer.Character or Players.LocalPlayer.CharacterAdded:Wait());
     rootPart = rootPart or (character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso") or character.PrimaryPart);
 
@@ -303,7 +315,11 @@ local AllowedESPType = {
 }
 
 function TracerCreate(espSettings: TracerESPSettings)
-    if espSettings.Enabled ~= true then return end;
+    if espSettings.Enabled ~= true then
+        debug_print("Tracer is not enabled.");
+        return
+    end;
+    debug_print("Creating Tracer...");
 
     -- // Fix Settings // --
     espSettings.Color = typeof(espSettings.Color) == "Color3" and espSettings.Color or Color3_new();
@@ -390,6 +406,7 @@ function TracerCreate(espSettings: TracerESPSettings)
         end
     }
 
+    debug_print("Tracer created.");
     return setmetatable(proxy, Tracer) :: typeof(data)
 end
 
@@ -403,6 +420,8 @@ function Library:Add(espSettings: ESPSettings)
 
     espSettings.ESPType = string.lower(espSettings.ESPType);
     assert(AllowedESPType[espSettings.ESPType] == true, "espSettings.ESPType; invalid ESPType");
+
+    debug_print("Creating ESP...", ESP.Index);
 
     -- // Fix Settings // --
     espSettings.Name = typeof_(espSettings.Name) == "string" and espSettings.Name or espSettings.Model.Name;
@@ -441,6 +460,7 @@ function Library:Add(espSettings: ESPSettings)
     -- // Create Billboard // --
     local Billboard = InstancesLib.Create("BillboardGui", {
         Parent = StorageFolder;
+        Name = ESP.Index;
 
         Enabled = true;
         ResetOnSpawn = false;
@@ -471,12 +491,15 @@ function Library:Add(espSettings: ESPSettings)
 
     -- // Create Highlighter // --
     local Highlighter, IsAdornment = nil, ESP.OriginalSettings.ESPType:sub(9) == "adornment";
+    debug_print("Creating Highlighter...", ESP.OriginalSettings.ESPType, IsAdornment);
     if IsAdornment == true then
         local _, ModelSize = ESP.CurrentSettings.Model:IsA("Model") and ESP.CurrentSettings.Model:GetBoundingBox() or nil, ESP.CurrentSettings.Model.Size;
 
         if ESP.OriginalSettings.ESPType == "sphereAdornment" then
             Highlighter = InstancesLib.Create("SphereHandleAdornment", {
                 Parent = StorageFolder;
+                Name = ESP.Index;
+
                 Adornee = ESP.CurrentSettings.Model;
     
                 AlwaysOnTop = true;
@@ -492,6 +515,8 @@ function Library:Add(espSettings: ESPSettings)
         elseif ESP.OriginalSettings.ESPType == "cylinderAdornment" then
             Highlighter = InstancesLib.Create("CylinderHandleAdornment", {
                 Parent = StorageFolder;
+                Name = ESP.Index;
+
                 Adornee = ESP.CurrentSettings.Model;
     
                 AlwaysOnTop = true;
@@ -508,6 +533,8 @@ function Library:Add(espSettings: ESPSettings)
         else
             Highlighter = InstancesLib.Create("BoxHandleAdornment", {
                 Parent = StorageFolder;
+                Name = ESP.Index;
+
                 Adornee = ESP.CurrentSettings.Model;
     
                 AlwaysOnTop = true;
@@ -523,6 +550,8 @@ function Library:Add(espSettings: ESPSettings)
     elseif ESP.OriginalSettings.ESPType == "selectionbox" then
         Highlighter = InstancesLib.Create("SelectionBox", {
             Parent = StorageFolder;
+            Name = ESP.Index;
+
             Adornee = ESP.CurrentSettings.Model;
     
             Color3 = ESP.CurrentSettings.BorderColor or Color3_new();
@@ -534,6 +563,8 @@ function Library:Add(espSettings: ESPSettings)
     else
         Highlighter = InstancesLib.Create("Highlight", {
             Parent = StorageFolder;
+            Name = ESP.Index;
+
             Adornee = ESP.CurrentSettings.Model;
 
             -- // Settings // --
@@ -546,9 +577,10 @@ function Library:Add(espSettings: ESPSettings)
     end
 
     -- // Create Tracer and Arrow // --
-    local Tracer = typeof_(ESP.CurrentSettings.Tracer) == "table" and TracerCreate(ESP.CurrentSettings.Tracer) or nil;
+    local Tracer = (typeof_(ESP.OriginalSettings.Tracer) == "table" and ESP.OriginalSettings.Tracer.Enabled == true) and TracerCreate(ESP.CurrentSettings.Tracer) or nil;
     local Arrow = nil
-    if typeof_(ESP.CurrentSettings.Arrow) == "table" and ESP.CurrentSettings.Arrow.Enabled == true then
+    if typeof_(ESP.OriginalSettings.Arrow) == "table" and ESP.OriginalSettings.Arrow.Enabled == true then
+        debug_print("Creating Arrow...", ESP.Index);
         Arrow = InstancesLib.Create("ImageLabel", {
             Parent = MainGUI;
 
@@ -570,6 +602,8 @@ function Library:Add(espSettings: ESPSettings)
     -- // Setup Delete Handler // --
     function ESP:Destroy()
         if ESP.Deleted == true then return end;
+        debug_print("Deleting ESP...", ESP.Index);
+
         if tablefind(Library.ESP, ESP.Index) then tableremove(Library.ESP, tablefind(Library.ESP, ESP.Index)); end
         Library.ESP[ESP.Index] = nil;
 
@@ -589,12 +623,14 @@ function Library:Add(espSettings: ESPSettings)
         ESP.Deleted = true;
 
         if ESP.OriginalSettings.OnDestroy ~= nil then
-            ESP.OriginalSettings.OnDestroy:Fire();
+            pcall(function() ESP.OriginalSettings.OnDestroy:Fire(); end);
         end
 
         if ESP.OriginalSettings.OnDestroyFunc ~= nil then
-            ESP.OriginalSettings.OnDestroyFunc();
+            pcall(ESP.OriginalSettings.OnDestroyFunc);
         end
+
+        debug_print("ESP deleted.", ESP.Index);
     end
 
     -- // Setup Update Handler // --
@@ -757,6 +793,7 @@ function Library:Add(espSettings: ESPSettings)
     end
 
     Library.ESP[ESP.Index] = ESP;
+    debug_print("ESP created.", ESP.Index);
     return ESP;
 end
 
@@ -794,6 +831,6 @@ tableinsert(Library.Connections, RunService.RenderStepped:Connect(function()
     end
 end));
 
-print("[mstudio45's ESP] Loaded! (v2)");
+debug_print("[mstudio45's ESP] Loaded! (v2)");
 getgenv().mstudio45_ESP = Library;
 return Library;
