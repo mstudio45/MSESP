@@ -156,11 +156,11 @@ local tablefreeze = function<T>(provided_table: T): T
 	return setmetatable(proxy, mt) :: typeof(provided_table)
 end
 
-local gethui, gethui_ = nil, getgenv().gethui
+local gethui = getgenv().gethui
 do
 	local testGui = Instance.new("ScreenGui")
 	local successful = pcall(function()
-		testGui.Parent = gethui_ and gethui_() or CoreGui
+		testGui.Parent = gethui and gethui() or CoreGui
 	end)
 
 	if not successful then
@@ -168,7 +168,7 @@ do
 			return Players.LocalPlayer.PlayerGui
 		end
 	else
-		gethui = gethui_ or function()
+		gethui = getgenv().gethui or function()
 			return CoreGui
 		end
 	end
@@ -201,7 +201,7 @@ local InstancesLib = {
 			instance[name] = val
 		end
 
-		if table.find(properties, "Parnet") then
+		if table.find(properties, "Parent") then
 			instance.Parent = properties.Parent
 		end
 
