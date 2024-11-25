@@ -168,7 +168,7 @@ do
 			return Players.LocalPlayer.PlayerGui
 		end
 	else
-		gethui = getgenv().gethui or function()
+		gethui = gethui or function()
 			return CoreGui
 		end
 	end
