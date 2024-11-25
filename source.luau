@@ -266,7 +266,8 @@ local rootPart: Part?
 local camera: Camera
 
 local worldToViewport = function(...)
-	camera = (camera or workspace.CurrentCamera)
+	camera = (camera or workspace.CurrentCamera);
+
         if camera == nil then
 		return Vector2.new(0, 0), false
 	end
@@ -776,7 +777,8 @@ function Library:Add(espSettings: ESPSettings)
 	end
 
 	function ESP:Render()
-		if ESP.Deleted or not ESP.Visible or not (rootPart and camera) then
+		if ESP.Deleted then return end
+                if ESP.Visible == false or not (rootPart and camera) then
 			Hide()
 			return
 		end
