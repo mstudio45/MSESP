@@ -201,7 +201,7 @@ local InstancesLib = {
 			instance[name] = val
 		end
 
-		if table.find(properties, "Parent") then
+		if properties["Parent"] then
 			instance.Parent = properties.Parent
 		end
 
