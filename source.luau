@@ -156,11 +156,11 @@ local tablefreeze = function<T>(provided_table: T): T
 	return setmetatable(proxy, mt) :: typeof(provided_table)
 end
 
-local gethui = getgenv().gethui
+local gethui, gethui_ = nil, getgenv().gethui
 do
 	local testGui = Instance.new("ScreenGui")
 	local successful = pcall(function()
-		testGui.Parent = (gethui and gethui()) or CoreGui
+		testGui.Parent = gethui_ and gethui_() or CoreGui
 	end)
 
 	if not successful then
@@ -168,7 +168,7 @@ do
 			return Players.LocalPlayer.PlayerGui
 		end
 	else
-		gethui = gethui or function()
+		gethui = gethui_ or function()
 			return CoreGui
 		end
 	end
