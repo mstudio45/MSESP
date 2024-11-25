@@ -797,8 +797,9 @@ function Library:Add(espSettings: ESPSettings)
 
 		-- // Update Arrow (only requires distance check) // --
 		if Arrow then
-                        Arrow.Visible = (not not Library.GlobalConfig.Arrows) and (not not ESP.CurrentSettings.Arrow.Enabled)
-			if Library.GlobalConfig.Arrows and not isOnScreen then
+                        Arrow.Visible = (not not Library.GlobalConfig.Arrows) and (not not ESP.CurrentSettings.Arrow.Enabled) and (isOnScreen ~= true)
+			
+                        if Arrow.Visible then
 				local screenSize = camera.ViewportSize
 				local centerPos = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
 
@@ -839,7 +840,7 @@ function Library:Add(espSettings: ESPSettings)
 		if Tracer then
 			Tracer.Visible = (not not Library.GlobalConfig.Tracers) and (not not ESP.CurrentSettings.Tracer.Enabled)
 
-			if Library.GlobalConfig.Tracers then
+			if Tracer.Visible then
 				if ESP.CurrentSettings.Tracer.From == "mouse" then
 					local mousePos = UserInputService:GetMouseLocation()
 					Tracer.From = Vector2.new(mousePos.X, mousePos.Y)
@@ -863,7 +864,7 @@ function Library:Add(espSettings: ESPSettings)
 		-- // Update Billboard // --
 		Billboard.Enabled = not not Library.GlobalConfig.Billboards
 
-		if Library.GlobalConfig.Billboards then
+		if Billboard.Enabled then
 			if Library.GlobalConfig.Distance then
 				BillboardText.Text = string.format(
 					'%s\n<font size="%d">[%s]</font>',
