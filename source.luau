@@ -767,13 +767,13 @@ function Library:Add(espSettings: ESPSettings)
 	end
 
 	function ESP:Show()
-		ESP.Visible = true
+		ESP.CurrentSettings.Visible = true
 	end
 	function ESP:Hide()
-		ESP.Visible = false
+		ESP.CurrentSettings.Visible = false
 	end
 	function ESP:ToggleVisibility()
-		ESP.Visible = not ESP.Visible
+		ESP.CurrentSettings.Visible = not ESP.CurrentSettings.Visible
 	end
 
 	function ESP:Render()
