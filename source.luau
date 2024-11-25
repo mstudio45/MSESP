@@ -778,7 +778,7 @@ function Library:Add(espSettings: ESPSettings)
 
 	function ESP:Render()
 		if ESP.Deleted then return end
-                if ESP.Visible == false or not (rootPart and camera) then
+                if ESP.CurrentSettings.Visible == false or not (rootPart and camera) then
 			Hide()
 			return
 		end
