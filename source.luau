@@ -797,7 +797,7 @@ function Library:Add(espSettings: ESPSettings)
 
 		-- // Update Arrow (only requires distance check) // --
 		if Arrow then
-                        Arrow.Visible = (not not Library.GlobalConfig.Arrows) and (not not ESP.CurrentSettings.Arrow.Enabled) and (isOnScreen ~= true)
+                        Arrow.Visible = Library.GlobalConfig.Arrows == true and ESP.CurrentSettings.Arrow.Enabled == true and (isOnScreen ~= true)
 			
                         if Arrow.Visible then
 				local screenSize = camera.ViewportSize
@@ -838,7 +838,7 @@ function Library:Add(espSettings: ESPSettings)
 
 		-- // Update Tracer // --
 		if Tracer then
-			Tracer.Visible = (not not Library.GlobalConfig.Tracers) and (not not ESP.CurrentSettings.Tracer.Enabled)
+			Tracer.Visible = Library.GlobalConfig.Tracers == true and ESP.CurrentSettings.Tracer.Enabled == true;
 
 			if Tracer.Visible then
 				if ESP.CurrentSettings.Tracer.From == "mouse" then
@@ -862,7 +862,7 @@ function Library:Add(espSettings: ESPSettings)
 		end
 
 		-- // Update Billboard // --
-		Billboard.Enabled = not not Library.GlobalConfig.Billboards
+		Billboard.Enabled = Library.GlobalConfig.Billboards == true;
 
 		if Billboard.Enabled then
 			if Library.GlobalConfig.Distance then
@@ -883,7 +883,9 @@ function Library:Add(espSettings: ESPSettings)
 		end
 
 		-- // Update Highlighter // --
-		if Library.GlobalConfig.Highlighters then
+                Highlighter.Adornee = Library.GlobalConfig.Highlighters == true and ESP.CurrentSettings.Model or nil;
+		
+                if Highlighter.Adornee then
 			if IsAdornment then
 				Highlighter.Color3 = Library.GlobalConfig.Rainbow and Library.RainbowColor or ESP.CurrentSettings.Color
 				Highlighter.Transparency = ESP.CurrentSettings.Transparency
@@ -902,9 +904,6 @@ function Library:Add(espSettings: ESPSettings)
 				Highlighter.FillTransparency = ESP.CurrentSettings.FillTransparency
 				Highlighter.OutlineTransparency = ESP.CurrentSettings.OutlineTransparency
 			end
-			Highlighter.Adornee = ESP.CurrentSettings.Model
-		else
-			Highlighter.Adornee = nil
 		end
 	end
 
