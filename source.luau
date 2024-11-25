@@ -539,8 +539,8 @@ function Library:Add(espSettings: ESPSettings)
 		TextSize = ESP.CurrentSettings.TextSize or 16,
 	})
 
-	InstanceLib.Create("UIStroke", {
-		Parent = BillboardText,
+	InstancesLib.Create("UIStroke", {
+		Parent = BillboardText
 	})
 
 	-- // Create Highlighter // --
