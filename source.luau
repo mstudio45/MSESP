@@ -150,7 +150,7 @@ local tablefreeze = function<T>(provided_table: T): T
 
 		__newindex = function(table, key, value)
 			-- nope --
-		end,
+		end
 	}
 
 	return setmetatable(proxy, mt) :: typeof(provided_table)
@@ -198,6 +198,7 @@ local InstancesLib = {
 			if name == "Parent" then
 				continue -- Parenting is expensive, do last.
 			end
+
 			instance[name] = val
 		end
 
@@ -215,6 +216,7 @@ local InstancesLib = {
 		local success, property = pcall(function()
 			return instance[property]
 		end)
+
 		return success and property or nil
 	end,
 
@@ -234,16 +236,8 @@ local InstancesLib = {
 			return 9e9
 		end
 
-		return instanceFrom
-				and (
-					instanceFrom.Position
-					- (
-						typeof(instaceOrPosition) == "Instance" and instaceOrPosition:GetPivot().Position
-						or instaceOrPosition
-					)
-				).Magnitude
-			or 9e9
-	end,
+		return instanceFrom and (instanceFrom.Position - (typeof(instaceOrPosition) == "Instance" and instaceOrPosition:GetPivot().Position or instaceOrPosition)).Magnitude or 9e9
+	end
 }
 
 local StorageFolder = InstancesLib.Create("Folder", {
@@ -268,7 +262,7 @@ local camera: Camera
 local worldToViewport = function(...)
 	camera = (camera or workspace.CurrentCamera);
 
-        if camera == nil then
+    if camera == nil then
 		return Vector2.new(0, 0), false
 	end
 
@@ -323,6 +317,7 @@ function Library:Clear()
 		if not ESP then
 			continue
 		end
+
 		ESP:Destroy()
 	end
 end
@@ -365,7 +360,6 @@ function TracerCreate(espSettings: TracerESPSettings)
 	-- // Create Path2D // --
 	local Path2D = InstancesLib.Create("Path2D", {
 		Parent = MainGUI,
-
 		Closed = true,
 
 		-- // Settings // --
@@ -374,28 +368,27 @@ function TracerCreate(espSettings: TracerESPSettings)
 		Transparency = espSettings.Transparency,
 	})
 
-	local FromControlPoint = Path2DControlPoint.new(
-		typeof(espSettings.From) ~= "Vector2" and UDim2.fromOffset(0, 0)
-			or UDim2.fromOffset(espSettings.From.X, espSettings.From.Y)
-	)
-	local ToControlPoint = Path2DControlPoint.new(
-		typeof(espSettings.To) ~= "Vector2" and UDim2.fromOffset(0, 0)
-			or UDim2.fromOffset(espSettings.To.X, espSettings.To.Y)
-	)
+	local function UpdateTracer(from, to)
+		Path2D:SetControlPoints({
+			Path2DControlPoint.new(UDim2.fromOffset(from.X, from.Y)),
+			Path2DControlPoint.new(UDim2.fromOffset(to.X, to.Y))
+		})
+	end
 
-	Path2D:SetControlPoints({ FromControlPoint, ToControlPoint })
-
+	--// Data Table \\--
 	local data = {
-		From = Vector2.new(0, 0),
-		To = Vector2.new(0, 0),
+		From = typeof(espSettings.From) ~= "Vector2" and UDim2.fromOffset(0, 0) or UDim2.fromOffset(espSettings.From.X, espSettings.From.Y),
+		To = typeof(espSettings.To) ~= "Vector2" and UDim2.fromOffset(0, 0) or UDim2.fromOffset(espSettings.To.X, espSettings.To.Y),
 
 		Visible = true,
 		Color3 = espSettings.Color,
 		Thickness = espSettings.Thickness,
 		Transparency = espSettings.Transparency,
 	}
-	local proxy = {}
+	UpdateTracer(data.From, data.To);
 
+	--// Tracer Metatable \\--
+	local proxy = {}
 	local Tracer = {
 		__newindex = function(table, key, value)
 			if not Path2D then
@@ -404,23 +397,24 @@ function TracerCreate(espSettings: TracerESPSettings)
 
 			if key == "From" then
 				assert(typeof(value) == "Vector2", tostring(key) .. "; expected Vector2, got " .. typeof(value))
+				UpdateTracer(value, data.To)
 
-				FromControlPoint = Path2DControlPoint.new(UDim2.fromOffset(value.X, value.Y))
-				Path2D:SetControlPoints({ FromControlPoint, ToControlPoint })
 			elseif key == "To" then
 				assert(typeof(value) == "Vector2", tostring(key) .. "; expected Vector2, got " .. typeof(value))
+				UpdateTracer(data.From, value)
 
-				ToControlPoint = Path2DControlPoint.new(UDim2.fromOffset(value.X, value.Y))
-				Path2D:SetControlPoints({ FromControlPoint, ToControlPoint })
 			elseif key == "Transparency" or key == "Thickness" then
 				assert(typeof(value) == "number", tostring(key) .. "; expected number, got " .. typeof(value))
 				Path2D[key] = value
+
 			elseif key == "Color3" then
 				assert(typeof(value) == "Color3", tostring(key) .. "; expected Color3, got " .. typeof(value))
 				Path2D.Color3 = value
+
 			elseif key == "Visible" then
 				assert(typeof(value) == "boolean", tostring(key) .. "; expected boolean, got " .. typeof(value))
-				Path2D.Visible = value
+
+				Path2D.Parent = value and MainGUI or StorageFolder;
 			end
 
 			data[key] = value
@@ -433,7 +427,7 @@ function TracerCreate(espSettings: TracerESPSettings)
 
 			if key == "Destroy" or key == "Delete" then
 				return function()
-					Path2D:SetControlPoints({})
+					Path2D:SetControlPoints({ })
 					Path2D:Destroy()
 
 					Path2D = nil
@@ -692,21 +686,10 @@ function Library:Add(espSettings: ESPSettings)
 
 		Library.ESP[ESP.Index] = nil
 
-		if Billboard then
-			Billboard:Destroy()
-		end
-
-		if Highlighter then
-			Highlighter:Destroy()
-		end
-
-		if Tracer then
-			Tracer:Destroy()
-		end
-
-		if Arrow then
-			Arrow:Destroy()
-		end
+		if Billboard then Billboard:Destroy() end
+		if Highlighter then Highlighter:Destroy() end
+		if Tracer then Tracer:Destroy() end
+		if Arrow then Arrow:Destroy() end
 
 		for _, connection in ESP.Connections do
 			if not connection.Connected then
@@ -734,36 +717,22 @@ function Library:Add(espSettings: ESPSettings)
 		if not forceShow and not ESP.Hidden or ESP.Deleted then
 			return
 		end
-
 		ESP.Hidden = false
 
 		Billboard.Enabled = true
-
-		if Highlighter then
-			Highlighter.Adornee = ESP.CurrentSettings.Model
-		end
-
-		if Tracer then
-			Tracer.Visible = true
-		end
+		if Highlighter then Highlighter.Adornee = ESP.CurrentSettings.Model end
+		if Tracer then Tracer.Visible = true end
 	end
 
 	local function Hide()
 		if ESP.Deleted or ESP.Hidden then
 			return
 		end
-
 		ESP.Hidden = true
 
 		Billboard.Enabled = false
-
-		if Highlighter then
-			Highlighter.Adornee = nil
-		end
-
-		if Tracer then
-			Tracer.Visible = false
-		end
+		if Highlighter then Highlighter.Adornee = nil end
+		if Tracer then Tracer.Visible = false end
 	end
 
 	function ESP:Show()
@@ -778,7 +747,7 @@ function Library:Add(espSettings: ESPSettings)
 
 	function ESP:Render()
 		if ESP.Deleted then return end
-                if ESP.CurrentSettings.Visible == false or not (rootPart and camera) then
+        if ESP.CurrentSettings.Visible == false or not (rootPart and camera) then
 			Hide()
 			return
 		end
@@ -788,10 +757,8 @@ function Library:Add(espSettings: ESPSettings)
 			ESP.CurrentSettings.ModelRoot = InstancesLib.FindPrimaryPart(ESP.CurrentSettings.Model)
 		end
 
-		local screenPos, isOnScreen =
-			worldToViewport((ESP.CurrentSettings.ModelRoot or ESP.CurrentSettings.Model):GetPivot().Position)
-		local distanceFromCharacter =
-			InstancesLib.DistanceFrom((ESP.CurrentSettings.ModelRoot or ESP.CurrentSettings.Model), rootPart)
+		local screenPos, isOnScreen = worldToViewport((ESP.CurrentSettings.ModelRoot or ESP.CurrentSettings.Model):GetPivot().Position)
+		local distanceFromCharacter = InstancesLib.DistanceFrom((ESP.CurrentSettings.ModelRoot or ESP.CurrentSettings.Model), rootPart)
 		if distanceFromCharacter > (ESP.CurrentSettings.MaxDistance or 5000) then
 			Hide()
 			return
@@ -799,9 +766,9 @@ function Library:Add(espSettings: ESPSettings)
 
 		-- // Update Arrow (only requires distance check) // --
 		if Arrow then
-                        Arrow.Visible = Library.GlobalConfig.Arrows == true and ESP.CurrentSettings.Arrow.Enabled == true and (isOnScreen ~= true)
-			
-                        if Arrow.Visible then
+            Arrow.Visible = Library.GlobalConfig.Arrows == true and ESP.CurrentSettings.Arrow.Enabled == true and (isOnScreen ~= true)
+
+            if Arrow.Visible then
 				local screenSize = camera.ViewportSize
 				local centerPos = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
 
@@ -834,9 +801,7 @@ function Library:Add(espSettings: ESPSettings)
 		if isOnScreen == false then
 			Hide()
 			return
-		else
-			Show()
-		end
+		else Show() end
 
 		-- // Update Tracer // --
 		if Tracer then
@@ -885,9 +850,9 @@ function Library:Add(espSettings: ESPSettings)
 		end
 
 		-- // Update Highlighter // --
-                Highlighter.Adornee = Library.GlobalConfig.Highlighters == true and ESP.CurrentSettings.Model or nil;
-		
-                if Highlighter.Adornee then
+        Highlighter.Adornee = Library.GlobalConfig.Highlighters == true and ESP.CurrentSettings.Model or nil;
+
+        if Highlighter.Adornee then
 			if IsAdornment then
 				Highlighter.Color3 = Library.GlobalConfig.Rainbow and Library.RainbowColor or ESP.CurrentSettings.Color
 				Highlighter.Transparency = ESP.CurrentSettings.Transparency
@@ -932,47 +897,41 @@ table.insert(Library.Connections, workspace:GetPropertyChangedSignal("CurrentCam
 table.insert(Library.Connections, Players.LocalPlayer.CharacterAdded:Connect(UpdatePlayerVariables))
 
 -- // Rainbow Handler // --
-table.insert(
-	Library.Connections,
-	RunService.RenderStepped:Connect(function(Delta)
-		Library.RainbowStep = Library.RainbowStep + Delta
+table.insert(Library.Connections, RunService.RenderStepped:Connect(function(Delta)
+	Library.RainbowStep = Library.RainbowStep + Delta
 
-		if Library.RainbowStep >= (1 / 60) then
-			Library.RainbowStep = 0
+	if Library.RainbowStep >= (1 / 60) then
+		Library.RainbowStep = 0
 
-			Library.RainbowHueSetup = Library.RainbowHueSetup + (1 / 400)
-			if Library.RainbowHueSetup > 1 then
-				Library.RainbowHueSetup = 0
-			end
-
-			Library.RainbowHue = Library.RainbowHueSetup
-			Library.RainbowColor = Color3.fromHSV(Library.RainbowHue, 0.8, 1)
+		Library.RainbowHueSetup = Library.RainbowHueSetup + (1 / 400)
+		if Library.RainbowHueSetup > 1 then
+			Library.RainbowHueSetup = 0
 		end
-	end)
-)
+
+		Library.RainbowHue = Library.RainbowHueSetup
+		Library.RainbowColor = Color3.fromHSV(Library.RainbowHue, 0.8, 1)
+	end
+end))
 
 -- // Main Handler // --
-table.insert(
-	Library.Connections,
-	RunService.RenderStepped:Connect(function()
-		if not (character and rootPart and camera) then
-			return
+table.insert(Library.Connections, RunService.RenderStepped:Connect(function()
+	if not (character and rootPart and camera) then
+		return
+	end
+
+	for _, ESP in Library.ESP do
+		if not ESP then
+			continue
 		end
 
-		for _, ESP in Library.ESP do
-			if not ESP then
-				continue
-			end
-
-			if not ESP.CurrentSettings.Model or not ESP.CurrentSettings.Model.Parent then
-				ESP:Destroy()
-				continue
-			end
-
-			pcall(coroutine.resume, ESP.RenderThread)
+		if not ESP.CurrentSettings.Model or not ESP.CurrentSettings.Model.Parent then
+			ESP:Destroy()
+			continue
 		end
-	end)
-)
+
+		pcall(coroutine.resume, ESP.RenderThread)
+	end
+end))
 
 debug_print("[mstudio45's ESP] Loaded! (v2)")
 getgenv().mstudio45_ESP = Library

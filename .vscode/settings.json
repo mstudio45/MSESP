@@ -1,0 +1,7 @@
+{
+    "robloxLsp.diagnostics.globals": [
+        "Path2DControlPoint",
+        "getgenv",
+        "cloneref"
+    ]
+}
