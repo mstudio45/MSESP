@@ -368,7 +368,7 @@ function TracerCreate(espSettings: TracerESPSettings)
 		Transparency = espSettings.Transparency,
 	})
 
-	local function UpdateTracer(from, to)
+	local function UpdateTracer(from: Vector2, to: Vector2)
 		Path2D:SetControlPoints({
 			Path2DControlPoint.new(UDim2.fromOffset(from.X, from.Y)),
 			Path2DControlPoint.new(UDim2.fromOffset(to.X, to.Y))
