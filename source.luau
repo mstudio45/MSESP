@@ -270,12 +270,11 @@ local function UpdatePlayerVariables()
 
 	camera = workspace.CurrentCamera
 	character = (Players.LocalPlayer.Character or Players.LocalPlayer.CharacterAdded:Wait())
-	rootPart = (
+	rootPart =
 		character:FindFirstChild("HumanoidRootPart")
 		or character:FindFirstChild("UpperTorso")
 		or character:FindFirstChild("Torso")
-		or character.PrimaryPart
-	)
+		or character.PrimaryPart;
 end
 UpdatePlayerVariables()
 
