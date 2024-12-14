@@ -74,12 +74,7 @@
     })
 --]]
 
-local debug_print = if getgenv().mstudio45_ESP_DEBUG
-	then function(...)
-		print("[mstudio45's ESP]", ...)
-	end
-	else function() end
-
+local debug_print = if getgenv().mstudio45_ESP_DEBUG then function(...) print("[mstudio45's ESP]", ...) end else function() end
 if getgenv().mstudio45_ESP then
 	debug_print("Already Loaded.")
 	return getgenv().mstudio45_ESP
@@ -273,6 +268,7 @@ end
 local function UpdatePlayerVariables()
 	debug_print("Updating Player Variables...")
 
+	camera = workspace.CurrentCamera
 	character = (Players.LocalPlayer.Character or Players.LocalPlayer.CharacterAdded:Wait())
 	rootPart = (
 		character:FindFirstChild("HumanoidRootPart")
@@ -280,7 +276,6 @@ local function UpdatePlayerVariables()
 		or character:FindFirstChild("Torso")
 		or character.PrimaryPart
 	)
-	camera = workspace.CurrentCamera
 end
 UpdatePlayerVariables()
 
@@ -513,7 +508,7 @@ function Library:Add(espSettings: ESPSettings)
 		Size = UDim2.new(0, 200, 0, 50),
 
 		-- // Settings // --
-		Adornee = ESP.CurrentSettings.TextModel,
+		Adornee = ESP.CurrentSettings.TextModel or ESP.CurrentSettings.Model,
 		StudsOffset = ESP.CurrentSettings.StudsOffset or Vector3.new(),
 	})
 
@@ -720,7 +715,7 @@ function Library:Add(espSettings: ESPSettings)
 		ESP.Hidden = false
 
 		Billboard.Enabled = true
-		if Highlighter then Highlighter.Adornee = ESP.CurrentSettings.Model end
+		if Highlighter then Highlighter.Adornee = ESP.CurrentSettings.Model; end
 		if Tracer then Tracer.Visible = true end
 	end
 
@@ -731,7 +726,7 @@ function Library:Add(espSettings: ESPSettings)
 		ESP.Hidden = true
 
 		Billboard.Enabled = false
-		if Highlighter then Highlighter.Adornee = nil end
+		if Highlighter then Highlighter.Adornee = nil; end
 		if Tracer then Tracer.Visible = false end
 	end
 
@@ -915,15 +910,13 @@ end))
 
 -- // Main Handler // --
 table.insert(Library.Connections, RunService.RenderStepped:Connect(function()
-	if not (character and rootPart and camera) then
-		return
+	if not (rootPart and camera) then
+		UpdatePlayerVariables()
+		task.wait()
 	end
 
 	for _, ESP in Library.ESP do
-		if not ESP then
-			continue
-		end
-
+		if not ESP then continue end
 		if not ESP.CurrentSettings.Model or not ESP.CurrentSettings.Model.Parent then
 			ESP:Destroy()
 			continue
