@@ -236,12 +236,12 @@ local InstancesLib = {
 }
 
 local StorageFolder = InstancesLib.Create("Folder", {
-	Parent = gethui(),
+	Parent = CoreGui, -- gethui(),
 	Name = RandomString(),
 })
 
 local MainGUI = InstancesLib.Create("ScreenGui", {
-	Parent = gethui(),
+	Parent = CoreGui, -- gethui(),
 	Name = RandomString(),
 	IgnoreGuiInset = true,
 	ResetOnSpawn = false,
