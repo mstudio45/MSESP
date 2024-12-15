@@ -151,15 +151,17 @@ local tablefreeze = function<T>(provided_table: T): T
 	return setmetatable(proxy, mt) :: typeof(provided_table)
 end
 
-local gethui = function() return CoreGui end
+local gethui = getgenv().gethui
 do
 	local testGui = Instance.new("ScreenGui")
 	local successful = pcall(function()
-		testGui.Parent = gethui()
+		testGui.Parent = gethui and gethui() or CoreGui
 	end)
 
 	if not successful then
 		gethui = function() return Players.LocalPlayer.PlayerGui end
+        else
+                gethui = gethui or function() return CoreGui end
 	end
 
 	testGui:Destroy()
@@ -230,8 +232,8 @@ local InstancesLib = {
 }
 
 local StorageFolder = InstancesLib.Create("Folder", {
-	Parent = gethui(),
-	Name = RandomString(),
+	Parent = CoreGui, -- gethui(),
+	Name = RandomString()
 })
 
 local MainGUI = InstancesLib.Create("ScreenGui", {
@@ -240,7 +242,7 @@ local MainGUI = InstancesLib.Create("ScreenGui", {
 	IgnoreGuiInset = true,
 	ResetOnSpawn = false,
 	ClipToDeviceSafeArea = false,
-	DisplayOrder = 999_999,
+	DisplayOrder = 999_999
 })
 
 -- // Player Variables // --
