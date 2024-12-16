@@ -153,6 +153,7 @@ local tablefreeze = function<T>(provided_table: T): T
 end
 
 local gethui = getgenv().gethui
+local getui;
 do
 	local testGui = Instance.new("ScreenGui")
 	local successful = pcall(function()
@@ -161,8 +162,10 @@ do
 
 	if not successful then
 		gethui = function() return Players.LocalPlayer.PlayerGui end
+		getui = gethui
 	else
 		gethui = typeof(gethui) == "function" and gethui or function() return CoreGui end
+		getui = function() return CoreGui end
 	end
 
 	testGui:Destroy()
@@ -247,7 +250,7 @@ local MainGUI = InstancesLib.Create("ScreenGui", {
 })
 
 local BillboardGUI = InstancesLib.Create("ScreenGui", {
-	Parent = gethui(),
+	Parent = getui(),
 	Name = RandomString(),
 	IgnoreGuiInset = true,
 	ResetOnSpawn = false,
