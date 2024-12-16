@@ -155,13 +155,13 @@ local gethui = getgenv().gethui
 do
 	local testGui = Instance.new("ScreenGui")
 	local successful = pcall(function()
-		testGui.Parent = gethui and gethui() or CoreGui
+		testGui.Parent = typeof(gethui) == "function" and gethui() or CoreGui
 	end)
 
 	if not successful then
 		gethui = function() return Players.LocalPlayer.PlayerGui end
-        else
-                gethui = gethui or function() return CoreGui end
+	else
+		gethui = typeof(gethui) == "function" and gethui or function() return CoreGui end
 	end
 
 	testGui:Destroy()
@@ -245,6 +245,15 @@ local MainGUI = InstancesLib.Create("ScreenGui", {
 	DisplayOrder = 999_999
 })
 
+local BillboardGUI = InstancesLib.Create("ScreenGui", {
+	Parent = gethui(),
+	Name = RandomString(),
+	IgnoreGuiInset = true,
+	ResetOnSpawn = false,
+	ClipToDeviceSafeArea = false,
+	DisplayOrder = 999_999
+})
+
 -- // Player Variables // --
 local character: Model
 local rootPart: Part?
@@ -304,12 +313,20 @@ local Library = {
 
 function Library:Clear()
 	for _, ESP in pairs(Library.ESP) do
-		if not ESP then
-			continue
-		end
-
+		if not ESP then continue end
 		ESP:Destroy()
 	end
+end
+
+function Library:Destroy()
+	Library:Clear();
+
+	StorageFolder:Destroy();
+	MainGUI:Destroy();
+	BillboardGUI:Destroy();
+	getgenv().mstudio45_ESP = nil;
+
+	debug_print("Unloaded!")
 end
 
 local AllowedTracerFrom = {
@@ -417,10 +434,10 @@ function TracerCreate(espSettings: TracerESPSettings)
 
 			if key == "Destroy" or key == "Delete" then
 				return function()
-					Path2D:SetControlPoints({ })
-					Path2D:Destroy()
+					Path2D:SetControlPoints({ });
+					Path2D:Destroy();
 
-					Path2D = nil
+					Path2D = nil;
 				end
 			end
 
@@ -494,7 +511,7 @@ function Library:Add(espSettings: ESPSettings)
 
 	-- // Create Billboard // --
 	local Billboard = InstancesLib.Create("BillboardGui", {
-		Parent = StorageFolder,
+		Parent = BillboardGUI,
 		Name = ESP.Index,
 
 		Enabled = true,
