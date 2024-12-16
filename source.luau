@@ -10,6 +10,7 @@
         ███   ███   ███          ███        ███    █▄           ███   ███
         ███   ███   ███    ▄█    ███        ███    ███    ▄█    ███   ███
         ▀█   ███   █▀   ▄████████▀         ██████████  ▄████████▀   ▄████▀
+                                    v2.0.1
 
                          Created by mstudio45 (Discord)
                        Contributors: Dottik, Master Oogway
