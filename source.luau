@@ -285,7 +285,7 @@ local function UpdatePlayerVariables()
 		or character:FindFirstChild("Torso")
 		or character.PrimaryPart;
 end
-UpdatePlayerVariables()
+if Players.LocalPlayer.Character then UpdatePlayerVariables(); else task.spawn(UpdatePlayerVariables); end;
 
 -- // Library // --
 local Library = {
