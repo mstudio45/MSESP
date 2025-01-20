@@ -724,10 +724,13 @@ function Library:Add(espSettings: ESPSettings)
 	end
 
 	-- // Setup Update Handler // --
-	local function Show(forceShow: boolean)
-		if not forceShow and not ESP.Hidden or ESP.Deleted then
-			return
+	local function Show(forceShow: boolean | nil)
+		if forceShow ~= true then
+			if  not ESP.Hidden or ESP.Deleted then
+				return
+			end
 		end
+
 		ESP.Hidden = false
 
 		Billboard.Enabled = true
@@ -735,10 +738,13 @@ function Library:Add(espSettings: ESPSettings)
 		if Tracer then Tracer.Visible = true end
 	end
 
-	local function Hide()
-		if ESP.Deleted or ESP.Hidden then
-			return
+	local function Hide(forceHide: boolean | nil)
+		if forceHide ~= true then
+			if ESP.Deleted or ESP.Hidden then
+				return
+			end
 		end
+
 		ESP.Hidden = true
 
 		Billboard.Enabled = false
@@ -746,18 +752,23 @@ function Library:Add(espSettings: ESPSettings)
 		if Tracer then Tracer.Visible = false end
 	end
 
-	function ESP:Show()
+	function ESP:Show(force: boolean | nil)
 		ESP.CurrentSettings.Visible = true
-		Show();
+		Show(force);
 	end
 
-	function ESP:Hide()
+	function ESP:Hide(force: boolean | nil)
 		ESP.CurrentSettings.Visible = false
-		Hide();
+		Hide(force);
 	end
 
-	function ESP:ToggleVisibility()
+	function ESP:ToggleVisibility(force: boolean | nil)
 		ESP.CurrentSettings.Visible = not ESP.CurrentSettings.Visible
+		if ESP.CurrentSettings.Visible then
+			Show(force);
+		else
+			Hide(force);
+		end
 	end
 
 	function ESP:Render()
