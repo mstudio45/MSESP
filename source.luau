@@ -748,10 +748,14 @@ function Library:Add(espSettings: ESPSettings)
 
 	function ESP:Show()
 		ESP.CurrentSettings.Visible = true
+		Show();
 	end
+
 	function ESP:Hide()
 		ESP.CurrentSettings.Visible = false
+		Hide();
 	end
+
 	function ESP:ToggleVisibility()
 		ESP.CurrentSettings.Visible = not ESP.CurrentSettings.Visible
 	end
