@@ -805,9 +805,9 @@ function Library:Add(espSettings: ESPSettings)
 				return
 			end
 		end
+		ESP.Hidden = false;
 
-		ESP.Hidden = false
-
+		--// Apply to Instances \\--
 		Billboard.Enabled = true;
 		if Highlighter then
 			Highlighter.Adornee = ESP.CurrentSettings.Model;
@@ -829,10 +829,11 @@ function Library:Add(espSettings: ESPSettings)
 				return
 			end
 		end
-
 		ESP.Hidden = true
 
-		Billboard.Enabled = false
+		--// Apply to Instances \\--
+		Billboard.Enabled = false;
+
 		if Highlighter then
 			Highlighter.Adornee = nil;
 			Highlighter.Parent = StorageFolder;
