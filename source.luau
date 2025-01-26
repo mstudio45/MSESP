@@ -263,7 +263,7 @@ local ActiveFolder = InstancesLib.Create("Folder", {
 })
 
 local StorageFolder = InstancesLib.Create("Folder", {
-	Parent = if typeof(game) == "userdata" then Players.Parent or game,
+	Parent = if typeof(game) == "userdata" then Players.Parent else game,
 	Name = RandomString()
 })
 
