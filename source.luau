@@ -810,6 +810,7 @@ function Library:Add(espSettings: ESPSettings)
 
 		--// Apply to Instances \\--
 		Billboard.Enabled = true;
+
 		if Highlighter then
 			Highlighter.Parent = ActiveFolder;
 		end
@@ -1023,7 +1024,7 @@ function Library:Add(espSettings: ESPSettings)
 			if not success then
 				task.defer(debug_error, "Failed to render ESP:", errorMessage)
 			end
-
+			
 			coroutine.yield()
 		end
 	end)
@@ -1067,9 +1068,7 @@ table.insert(Library.Connections, RunService.RenderStepped:Connect(function()
 			continue
 		end
 
-		if coroutine.status(ESP.RenderThread) == "suspended" then
-			coroutine.resume(ESP.RenderThread)
-		end
+		pcall(coroutine.resume, ESP.RenderThread)
 	end
 end))
 
