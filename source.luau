@@ -800,11 +800,11 @@ function Library:Add(espSettings: ESPSettings)
 
 	-- // Setup Update Handler // --
 	local function Show(forceShow: boolean?)
-		if forceShow ~= true then
-			if not ESP.Hidden or ESP.Deleted then
-				return
-			end
+		if ESP.Deleted then return; end
+		if forceShow ~= true and not ESP.Hidden then
+			return
 		end
+
 		ESP.Hidden = false;
 
 		--// Apply to Instances \\--
@@ -824,11 +824,11 @@ function Library:Add(espSettings: ESPSettings)
 	end
 
 	local function Hide(forceHide: boolean?)
-		if forceHide ~= true then
-			if ESP.Deleted or ESP.Hidden then
-				return
-			end
+		if ESP.Deleted then return; end
+		if forceHide ~= true and ESP.Hidden then
+			return
 		end
+
 		ESP.Hidden = true
 
 		--// Apply to Instances \\--
