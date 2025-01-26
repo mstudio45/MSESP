@@ -10,10 +10,10 @@
         ███   ███   ███          ███        ███    █▄           ███   ███
         ███   ███   ███    ▄█    ███        ███    ███    ▄█    ███   ███
         ▀█   ███   █▀   ▄████████▀         ██████████  ▄████████▀   ▄████▀
-                                    v2.0.1
+                                    v2.0.2
 
                          Created by mstudio45 (Discord)
-                       Contributors: Dottik, Master Oogway
+                Contributors: Dottik, Master Oogway, deividcomsono
 --]]
 
 --[[
@@ -35,7 +35,7 @@
         TextSize : number [optional, default = 16]
         
         -- Highlighter Settings --
-        ESPType : SphereAdornment | CylinderAdornment | Adornment | SelectionBox | Highlight [default = Highlight]
+        ESPType : Text | SphereAdornment | CylinderAdornment | Adornment | SelectionBox | Highlight [default = Highlight]
         Thickness : number [optional, default = 0.1]
         Transparency : number [optional, default = 0.65]
 
@@ -75,9 +75,13 @@
     })
 --]]
 
-local debug_print = if getgenv().mstudio45_ESP_DEBUG then function(...) print("[mstudio45's ESP]", ...) end else function() end
+local VERSION = "2.0.2";
+local debug_print = if getgenv().mstudio45_ESP_DEBUG then (function(...) print("[mstudio45's ESP]", ...) end) else (function() end);
+local debug_warn  = if getgenv().mstudio45_ESP_DEBUG then (function(...) warn("[mstudio45's ESP]", ...) end) else (function() end);
+local debug_error = if getgenv().mstudio45_ESP_DEBUG then (function(...) error("[mstudio45's ESP] " .. table.concat({ ... }, " ")) end) else (function() end);
+
 if getgenv().mstudio45_ESP then
-	debug_print("Already Loaded.")
+	debug_warn("Already Loaded.")
 	return getgenv().mstudio45_ESP
 end
 
@@ -110,7 +114,7 @@ export type ESPSettings = {
 	StudsOffset: Vector3?,
 	TextSize: number?,
 
-	ESPType: ("SphereAdornment" | "CylinderAdornment" | "Adornment" | "SelectionBox" | "Highlight")?,
+	ESPType: ("Text" | "SphereAdornment" | "CylinderAdornment" | "Adornment" | "SelectionBox" | "Highlight")?,
 	Thickness: number?,
 	Transparency: number?,
 
@@ -129,10 +133,16 @@ export type ESPSettings = {
 	OnDestroyFunc: (() -> nil)?,
 }
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local CoreGui = cloneref and cloneref(game:GetService("CoreGui")) or game:GetService("CoreGui")
+--// Executor Variables \\--
+local cloneref = getgenv().cloneref or function(inst) return inst; end
+local getui, gethui = nil, getgenv().gethui;
+
+--// Services \\--
+local Players = cloneref(game:GetService("Players"))
+local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local RunService = cloneref(game:GetService("RunService"))
+local UserInputService = cloneref(game:GetService("UserInputService"))
+local CoreGui = cloneref(game:GetService("CoreGui"))
 
 -- // Variables // --
 local tablefreeze = function<T>(provided_table: T): T
@@ -152,26 +162,18 @@ local tablefreeze = function<T>(provided_table: T): T
 	return setmetatable(proxy, mt) :: typeof(provided_table)
 end
 
-local gethui = getgenv().gethui
-local getui;
-do
-	local testGui = Instance.new("ScreenGui")
-	local successful = pcall(function()
-		testGui.Parent = typeof(gethui) == "function" and gethui() or CoreGui
-	end)
-
-	if not successful then
-		gethui = function() return Players.LocalPlayer.PlayerGui end
-		getui = gethui
+--// Functions \\--
+local function GetPivot(Instance: Bone | Attachment | PVInstance)
+	if Instance.ClassName == "Bone" then
+		return Instance.TransformedWorldCFrame
+	elseif Instance.ClassName == "Attachment" then
+		return Instance.WorldCFrame
 	else
-		gethui = typeof(gethui) == "function" and gethui or function() return CoreGui end
-		getui = function() return CoreGui end
+		return Instance:GetPivot()
 	end
-
-	testGui:Destroy()
 end
 
-local function RandomString(length: number)
+local function RandomString(length: number?)
 	length = tonumber(length) or math.random(10, 20)
 
 	local array = {}
@@ -204,15 +206,15 @@ local InstancesLib = {
 		return instance
 	end,
 
-	TryGetProperty = function(instance, property)
+	TryGetProperty = function(instance, propertyName)
 		assert(typeof(instance) == "Instance", "Argument #1 must be an Instance.")
-		assert(typeof(property) == "string", "Argument #2 must be a string.")
+		assert(typeof(propertyName) == "string", "Argument #2 must be a string.")
 
 		local success, property = pcall(function()
-			return instance[property]
+			return instance[propertyName]
 		end)
 
-		return success and property or nil
+		return if success then property else nil;
 	end,
 
 	FindPrimaryPart = function(instance)
@@ -223,20 +225,48 @@ local InstancesLib = {
 		return (instance:IsA("Model") and instance.PrimaryPart or nil)
 			or instance:FindFirstChildWhichIsA("BasePart")
 			or instance:FindFirstChildWhichIsA("UnionOperation")
-			or instance
+			or instance;
 	end,
 
-	DistanceFrom = function(instaceOrPosition, instanceFrom)
-		if not instaceOrPosition or not instanceFrom then
-			return 9e9
+	DistanceFrom = function(inst, from)
+		if not (inst and from) then
+			return 9e9;
 		end
 
-		return instanceFrom and (instanceFrom.Position - (typeof(instaceOrPosition) == "Instance" and instaceOrPosition:GetPivot().Position or instaceOrPosition)).Magnitude or 9e9
+		local position = if typeof(inst) == "Instance" then GetPivot(inst).Position else inst;
+		local fromPosition = if typeof(from) == "Instance" then GetPivot(from).Position else from;
+
+		return (fromPosition - position).Magnitude;
 	end
 }
 
+--// HiddenUI test \\--
+do
+	local testGui = Instance.new("ScreenGui")
+	local successful = pcall(function()
+		testGui.Parent = typeof(gethui) == "function" and gethui() or CoreGui;
+	end)
+
+	if not successful then
+		debug_warn("gethui and CoreGUI is not accessible!")
+		gethui = function() return Players.LocalPlayer.PlayerGui; end
+		getui = gethui;
+	else
+		gethui = typeof(gethui) == "function" and gethui or function() return CoreGui end;
+		getui = function() return CoreGui end;
+	end
+
+	testGui:Destroy()
+end
+
+--// GUI \\--
+local ActiveFolder = InstancesLib.Create("Folder", {
+	Parent = CoreGui,
+	Name = RandomString()
+})
+
 local StorageFolder = InstancesLib.Create("Folder", {
-	Parent = CoreGui, -- gethui(),
+	Parent = ReplicatedStorage,
 	Name = RandomString()
 })
 
@@ -258,45 +288,21 @@ local BillboardGUI = InstancesLib.Create("ScreenGui", {
 	DisplayOrder = 999_999
 })
 
--- // Player Variables // --
-local character: Model
-local rootPart: Part?
-local camera: Camera
-
-local worldToViewport = function(...)
-	camera = (camera or workspace.CurrentCamera);
-
-    if camera == nil then
-		return Vector2.new(0, 0), false
-	end
-
-	return camera:WorldToViewportPoint(...)
-end
-
--- // Functions // --
-local function UpdatePlayerVariables()
-	debug_print("Updating Player Variables...")
-
-	camera = workspace.CurrentCamera
-	character = (Players.LocalPlayer.Character or Players.LocalPlayer.CharacterAdded:Wait())
-	rootPart =
-		character:FindFirstChild("HumanoidRootPart")
-		or character:FindFirstChild("UpperTorso")
-		or character:FindFirstChild("Torso")
-		or character.PrimaryPart;
-end
-if Players.LocalPlayer.Character then UpdatePlayerVariables(); else task.spawn(UpdatePlayerVariables); end;
-
 -- // Library // --
 local Library = {
+	Destroyed = false,
+
 	-- // Storages // --
+	ActiveFolder = ActiveFolder,
 	StorageFolder = StorageFolder,
 	MainGUI = MainGUI,
+	BillboardGUI = BillboardGUI,
 	ESP = {},
 	Connections = {},
 
 	-- // Global Config // --
 	GlobalConfig = {
+		IgnoreCharacter = false,
 		Rainbow = false,
 
 		Billboards = true,
@@ -305,17 +311,53 @@ local Library = {
 		Tracers = true,
 		Arrows = true,
 
-		Font = Enum.Font.RobotoCondensed,
+		Font = Enum.Font.RobotoCondensed
 	},
 
 	-- // Rainbow Variables // --
 	RainbowHueSetup = 0,
 	RainbowHue = 0,
 	RainbowStep = 0,
-	RainbowColor = Color3.new(),
+	RainbowColor = Color3.new()
 }
 
+-- // Player Variables // --
+local character: Model
+local rootPart: Part?
+local camera: Camera = workspace.CurrentCamera
+
+local function worldToViewport(...)
+	camera = (camera or workspace.CurrentCamera);
+
+	if camera == nil then
+		return Vector2.new(0, 0), false
+	end
+
+	return camera:WorldToViewportPoint(...)
+end
+
+local function UpdatePlayerVariables(newCharacter)
+	if Library.GlobalConfig.IgnoreCharacter == true then
+		debug_warn("UpdatePlayerVariables: IgnoreCharacter enabled.")
+		return
+	end
+	debug_print("Updating Player Variables...")
+
+	character = newCharacter or Players.LocalPlayer.Character or Players.LocalPlayer.CharacterAdded:Wait();
+	rootPart =
+		character:FindFirstChild("HumanoidRootPart")
+		or character:FindFirstChild("UpperTorso")
+		or character:FindFirstChild("Torso")
+		or character.PrimaryPart;
+end
+if Players.LocalPlayer.Character then UpdatePlayerVariables(); else task.spawn(UpdatePlayerVariables) end;
+
+--// Library Functions \\--
 function Library:Clear()
+	if Library.Destroyed == true then
+		return
+	end
+
 	for _, ESP in pairs(Library.ESP) do
 		if not ESP then continue end
 		ESP:Destroy()
@@ -323,16 +365,34 @@ function Library:Clear()
 end
 
 function Library:Destroy()
+	if Library.Destroyed == true then
+		return
+	end
+
+	Library.Destroyed = true;
 	Library:Clear();
 
+	ActiveFolder:Destroy();
 	StorageFolder:Destroy();
 	MainGUI:Destroy();
 	BillboardGUI:Destroy();
-	getgenv().mstudio45_ESP = nil;
 
+	--// Clear connections \\--
+	for _, connection in Library.Connections do
+		if not connection.Connected then
+			continue
+		end
+
+		connection:Disconnect()
+	end
+
+	table.clear(Library.Connections)
+
+	getgenv().mstudio45_ESP = nil;
 	debug_print("Unloaded!")
 end
 
+--// Type Checks \\--
 local AllowedTracerFrom = {
 	top = true,
 	bottom = true,
@@ -341,6 +401,7 @@ local AllowedTracerFrom = {
 }
 
 local AllowedESPType = {
+	text = true,
 	sphereadornment = true,
 	cylinderadornment = true,
 	adornment = true,
@@ -348,13 +409,19 @@ local AllowedESPType = {
 	highlight = true,
 }
 
-function TracerCreate(espSettings: TracerESPSettings)
+--// ESP Instances \\--
+function TracerCreate(espSettings: TracerESPSettings, instanceName: string?)
+	if Library.Destroyed == true then
+		debug_warn("Library is destroyed, please reload it.")
+		return
+	end
+
 	if not espSettings then
 		espSettings = {}
 	end
 
 	if espSettings.Enabled ~= true then
-		debug_print("Tracer is not enabled.")
+		debug_warn("Tracer is not enabled.")
 		return
 	end
 	debug_print("Creating Tracer...")
@@ -371,6 +438,7 @@ function TracerCreate(espSettings: TracerESPSettings)
 	-- // Create Path2D // --
 	local Path2D = InstancesLib.Create("Path2D", {
 		Parent = MainGUI,
+		Name = if typeof(instanceName) == "string" then instanceName else "Tracer",
 		Closed = true,
 
 		-- // Settings // --
@@ -425,7 +493,7 @@ function TracerCreate(espSettings: TracerESPSettings)
 			elseif key == "Visible" then
 				assert(typeof(value) == "boolean", tostring(key) .. "; expected boolean, got " .. typeof(value))
 
-				Path2D.Parent = value and MainGUI or StorageFolder;
+				Path2D.Parent = if value then MainGUI else StorageFolder;
 			end
 
 			data[key] = value
@@ -454,6 +522,11 @@ function TracerCreate(espSettings: TracerESPSettings)
 end
 
 function Library:Add(espSettings: ESPSettings)
+	if Library.Destroyed == true then
+		debug_warn("Library is destroyed, please reload it.")
+		return
+	end
+
 	assert(typeof(espSettings) == "table", "espSettings; expected table, got " .. typeof(espSettings))
 	assert(
 		typeof(espSettings.Model) == "Instance",
@@ -473,33 +546,30 @@ function Library:Add(espSettings: ESPSettings)
 	assert(AllowedESPType[espSettings.ESPType] == true, "espSettings.ESPType; invalid ESPType")
 
 	-- // Fix Settings // --
-	espSettings.Name = typeof(espSettings.Name) == "string" and espSettings.Name or espSettings.Model.Name
-	espSettings.TextModel = typeof(espSettings.TextModel) == "Instance" and espSettings.TextModel or espSettings.Model
+	espSettings.Name = if typeof(espSettings.Name) == "string" then espSettings.Name else espSettings.Model.Name;
+	espSettings.TextModel = if typeof(espSettings.TextModel) == "Instance" then espSettings.TextModel else espSettings.Model;
 
-	espSettings.Visible = typeof(espSettings.Visible) == "boolean" and espSettings.Visible or true
-	espSettings.Color = typeof(espSettings.Color) == "Color3" and espSettings.Color or Color3.new()
+	espSettings.Visible = if typeof(espSettings.Visible) == "boolean" then espSettings.Visible else true;
+	espSettings.Color = if typeof(espSettings.Color) == "Color3" then espSettings.Color else Color3.new();
+	espSettings.MaxDistance = if typeof(espSettings.MaxDistance) == "number" then espSettings.MaxDistance else 5000;
 
-	espSettings.StudsOffset = typeof(espSettings.StudsOffset) == "Vector3" and espSettings.StudsOffset or Vector3.new()
-	espSettings.TextSize = typeof(espSettings.TextSize) == "number" and espSettings.TextSize or 16
+	espSettings.StudsOffset = if typeof(espSettings.StudsOffset) == "Vector3" then espSettings.StudsOffset else Vector3.new();
+	espSettings.TextSize = if typeof(espSettings.TextSize) == "number" then espSettings.TextSize else 16;
 
-	espSettings.Thickness = typeof(espSettings.Thickness) == "number" and espSettings.Thickness or 0.1
-	espSettings.Transparency = typeof(espSettings.Transparency) == "number" and espSettings.Transparency or 0.65
+	espSettings.Thickness = if typeof(espSettings.Thickness) == "number" then espSettings.Thickness else 0.1;
+	espSettings.Transparency = if typeof(espSettings.Transparency) == "number" then espSettings.Transparency else 0.65;
 
-	espSettings.SurfaceColor = typeof(espSettings.SurfaceColor) == "Color3" and espSettings.SurfaceColor or Color3.new()
+	espSettings.SurfaceColor = if typeof(espSettings.SurfaceColor) == "Color3" then espSettings.SurfaceColor else Color3.new();
+	espSettings.FillColor = if typeof(espSettings.FillColor) == "Color3" then espSettings.FillColor else Color3.new();
+	espSettings.OutlineColor = if typeof(espSettings.OutlineColor) == "Color3" then espSettings.OutlineColor else Color3.new(1, 1, 1);
 
-	espSettings.FillColor = typeof(espSettings.FillColor) == "Color3" and espSettings.FillColor or Color3.new()
-	espSettings.OutlineColor = typeof(espSettings.OutlineColor) == "Color3" and espSettings.OutlineColor
-		or Color3.new(1, 1, 1)
+	espSettings.FillTransparency = if typeof(espSettings.FillTransparency) == "number" then espSettings.FillTransparency else 0.65;
+	espSettings.OutlineTransparency = if typeof(espSettings.OutlineTransparency) == "number" then espSettings.OutlineTransparency else 0;
 
-	espSettings.FillTransparency = typeof(espSettings.FillTransparency) == "number" and espSettings.FillTransparency
-		or 0.65
-	espSettings.OutlineTransparency = typeof(espSettings.OutlineTransparency) == "number"
-			and espSettings.OutlineTransparency
-		or 0
+	espSettings.Tracer = if typeof(espSettings.Tracer) == "table" then espSettings.Tracer else { Enabled = false };
+	espSettings.Arrow = if typeof(espSettings.Arrow) == "table" then espSettings.Arrow else { Enabled = false };
 
-	espSettings.Tracer = typeof(espSettings.Tracer) == "table" and espSettings.Tracer or { Enabled = false }
-	espSettings.Arrow = typeof(espSettings.Arrow) == "table" and espSettings.Arrow or { Enabled = false }
-
+	--// ESP Data \\--
 	local ESP = {
 		Index = RandomString(),
 		OriginalSettings = tablefreeze(espSettings),
@@ -508,10 +578,10 @@ function Library:Add(espSettings: ESPSettings)
 		Hidden = false,
 		Deleted = false,
 		Connections = {} :: { RBXScriptConnection },
-		RenderThread = nil :: thread?,
+		RenderThread = nil :: thread?
 	}
 
-	debug_print("Creating ESP...", ESP.Index)
+	debug_print("Creating ESP...", ESP.Index, "-", ESP.CurrentSettings.Name)
 
 	-- // Create Billboard // --
 	local Billboard = InstancesLib.Create("BillboardGui", {
@@ -552,6 +622,7 @@ function Library:Add(espSettings: ESPSettings)
 	-- // Create Highlighter // --
 	local Highlighter, IsAdornment = nil, not not string.match(string.lower(ESP.OriginalSettings.ESPType), "adornment")
 	debug_print("Creating Highlighter...", ESP.OriginalSettings.ESPType, IsAdornment)
+
 	if IsAdornment then
 		local _, ModelSize = nil, nil
 		if ESP.CurrentSettings.Model:IsA("Model") then
@@ -560,7 +631,7 @@ function Library:Add(espSettings: ESPSettings)
 			if not InstancesLib.TryGetProperty(ESP.CurrentSettings.Model, "Size") then
 				local prim = InstancesLib.FindPrimaryPart(ESP.CurrentSettings.Model)
 				if not InstancesLib.TryGetProperty(prim, "Size") then
-					debug_print("Couldn't get model size, switching to Highlight.", ESP.Index)
+					debug_print("Couldn't get model size, switching to Highlight.", ESP.Index, "-", ESP.CurrentSettings.Name)
 
 					espSettings.ESPType = "Highlight"
 					return Library:Add(espSettings)
@@ -574,7 +645,7 @@ function Library:Add(espSettings: ESPSettings)
 
 		if ESP.OriginalSettings.ESPType == "sphereadornment" then
 			Highlighter = InstancesLib.Create("SphereHandleAdornment", {
-				Parent = StorageFolder,
+				Parent = ActiveFolder,
 				Name = ESP.Index,
 
 				Adornee = ESP.CurrentSettings.Model,
@@ -591,7 +662,7 @@ function Library:Add(espSettings: ESPSettings)
 			})
 		elseif ESP.OriginalSettings.ESPType == "cylinderadornment" then
 			Highlighter = InstancesLib.Create("CylinderHandleAdornment", {
-				Parent = StorageFolder,
+				Parent = ActiveFolder,
 				Name = ESP.Index,
 
 				Adornee = ESP.CurrentSettings.Model,
@@ -609,7 +680,7 @@ function Library:Add(espSettings: ESPSettings)
 			})
 		else
 			Highlighter = InstancesLib.Create("BoxHandleAdornment", {
-				Parent = StorageFolder,
+				Parent = ActiveFolder,
 				Name = ESP.Index,
 
 				Adornee = ESP.CurrentSettings.Model,
@@ -626,7 +697,7 @@ function Library:Add(espSettings: ESPSettings)
 		end
 	elseif ESP.OriginalSettings.ESPType == "selectionbox" then
 		Highlighter = InstancesLib.Create("SelectionBox", {
-			Parent = StorageFolder,
+			Parent = ActiveFolder,
 			Name = ESP.Index,
 
 			Adornee = ESP.CurrentSettings.Model,
@@ -637,9 +708,9 @@ function Library:Add(espSettings: ESPSettings)
 			SurfaceColor3 = ESP.CurrentSettings.SurfaceColor or Color3.new(),
 			SurfaceTransparency = ESP.CurrentSettings.Transparency or 0.65,
 		})
-	else
+	elseif ESP.OriginalSettings.ESPType == "highlight" then
 		Highlighter = InstancesLib.Create("Highlight", {
-			Parent = StorageFolder,
+			Parent = ActiveFolder,
 			Name = ESP.Index,
 
 			Adornee = ESP.CurrentSettings.Model,
@@ -654,12 +725,14 @@ function Library:Add(espSettings: ESPSettings)
 	end
 
 	-- // Create Tracer and Arrow // --
-	local Tracer = typeof(ESP.OriginalSettings.Tracer) == "table" and TracerCreate(ESP.CurrentSettings.Tracer) or nil;
+	local Tracer = if typeof(ESP.OriginalSettings.Tracer) == "table" then TracerCreate(ESP.CurrentSettings.Tracer, ESP.Index) else nil;
 	local Arrow = nil;
+
 	if typeof(ESP.OriginalSettings.Arrow) == "table" then
-		debug_print("Creating Arrow...", ESP.Index)
+		debug_print("Creating Arrow...", ESP.Index, "-", ESP.CurrentSettings.Name)
 		Arrow = InstancesLib.Create("ImageLabel", {
 			Parent = MainGUI,
+			Name = ESP.Index,
 
 			Size = UDim2.new(0, 48, 0, 48),
 			SizeConstraint = Enum.SizeConstraint.RelativeYY,
@@ -671,23 +744,23 @@ function Library:Add(espSettings: ESPSettings)
 
 			Image = "http://www.roblox.com/asset/?id=16368985219",
 			ImageColor3 = ESP.CurrentSettings.Color or Color3.new(),
-		})
+		});
 
-		ESP.CurrentSettings.Arrow.CenterOffset = typeof(ESP.CurrentSettings.Arrow.CenterOffset) == "number"
-				and ESP.CurrentSettings.Arrow.CenterOffset
-			or 300
+		ESP.CurrentSettings.Arrow.CenterOffset = if typeof(ESP.CurrentSettings.Arrow.CenterOffset) == "number" then ESP.CurrentSettings.Arrow.CenterOffset else 300;
 	end
 
 	-- // Setup Delete Handler // --
 	function ESP:Destroy()
 		if ESP.Deleted == true then
-			return
+			debug_warn("ESP Instance is already deleted.")
+			return;
 		end
-		debug_print("Deleting ESP...", ESP.Index)
+
+		debug_print("Deleting ESP...", ESP.Index, "-", ESP.CurrentSettings.Name)
 		ESP.Deleted = true
 
 		if ESP.RenderThread then
-			debug_print("Stopping render coroutine", ESP.Index)
+			debug_print("Stopping render coroutine", ESP.Index, "-", ESP.CurrentSettings.Name)
 			pcall(coroutine.close, ESP.RenderThread)
 		end
 
@@ -697,11 +770,13 @@ function Library:Add(espSettings: ESPSettings)
 
 		Library.ESP[ESP.Index] = nil
 
+		--// Delete ESP Instances \\--
 		if Billboard then Billboard:Destroy() end
 		if Highlighter then Highlighter:Destroy() end
 		if Tracer then Tracer:Destroy() end
 		if Arrow then Arrow:Destroy() end
 
+		--// Clear connections \\--
 		for _, connection in ESP.Connections do
 			if not connection.Connected then
 				continue
@@ -712,6 +787,7 @@ function Library:Add(espSettings: ESPSettings)
 
 		table.clear(ESP.Connections)
 
+		--// OnDestroy \\--
 		if ESP.OriginalSettings.OnDestroy then
 			pcall(ESP.OriginalSettings.OnDestroy.Fire, ESP.OriginalSettings.OnDestroy)
 		end
@@ -720,25 +796,30 @@ function Library:Add(espSettings: ESPSettings)
 			pcall(ESP.OriginalSettings.OnDestroyFunc)
 		end
 
-		debug_print("ESP deleted.", ESP.Index)
+		debug_print("ESP deleted.", ESP.Index, "-", ESP.CurrentSettings.Name)
 	end
 
 	-- // Setup Update Handler // --
-	local function Show(forceShow: boolean | nil)
+	local function Show(forceShow: boolean?)
 		if forceShow ~= true then
-			if  not ESP.Hidden or ESP.Deleted then
+			if not ESP.Hidden or ESP.Deleted then
 				return
 			end
 		end
 
 		ESP.Hidden = false
 
-		Billboard.Enabled = true
-		if Highlighter then Highlighter.Adornee = ESP.CurrentSettings.Model; end
-		if Tracer then Tracer.Visible = true end
+		Billboard.Enabled = true;
+		if Highlighter then
+			Highlighter.Adornee = ESP.CurrentSettings.Model;
+			Highlighter.Parent = ActiveFolder;
+		end
+		if Tracer then
+			Tracer.Visible = true;
+		end
 	end
 
-	local function Hide(forceHide: boolean | nil)
+	local function Hide(forceHide: boolean?)
 		if forceHide ~= true then
 			if ESP.Deleted or ESP.Hidden then
 				return
@@ -748,21 +829,27 @@ function Library:Add(espSettings: ESPSettings)
 		ESP.Hidden = true
 
 		Billboard.Enabled = false
-		if Highlighter then Highlighter.Adornee = nil; end
-		if Tracer then Tracer.Visible = false end
+		if Highlighter then
+			Highlighter.Adornee = nil;
+			Highlighter.Parent = StorageFolder;
+		end
+
+		if Tracer then
+			Tracer.Visible = false;
+		end
 	end
 
-	function ESP:Show(force: boolean | nil)
+	function ESP:Show(force: boolean?)
 		ESP.CurrentSettings.Visible = true
 		Show(force);
 	end
 
-	function ESP:Hide(force: boolean | nil)
+	function ESP:Hide(force: boolean?)
 		ESP.CurrentSettings.Visible = false
 		Hide(force);
 	end
 
-	function ESP:ToggleVisibility(force: boolean | nil)
+	function ESP:ToggleVisibility(force: boolean?)
 		ESP.CurrentSettings.Visible = not ESP.CurrentSettings.Visible
 		if ESP.CurrentSettings.Visible then
 			Show(force);
@@ -772,8 +859,12 @@ function Library:Add(espSettings: ESPSettings)
 	end
 
 	function ESP:Render()
-		if ESP.Deleted then return end
-        if ESP.CurrentSettings.Visible == false or not (rootPart and camera) then
+		if ESP.Deleted == true then return end
+		if
+			ESP.CurrentSettings.Visible == false or
+			not camera or
+			(if Library.GlobalConfig.IgnoreCharacter == true then false else not rootPart)
+		then
 			Hide()
 			return
 		end
@@ -783,9 +874,16 @@ function Library:Add(espSettings: ESPSettings)
 			ESP.CurrentSettings.ModelRoot = InstancesLib.FindPrimaryPart(ESP.CurrentSettings.Model)
 		end
 
-		local screenPos, isOnScreen = worldToViewport((ESP.CurrentSettings.ModelRoot or ESP.CurrentSettings.Model):GetPivot().Position)
-		local distanceFromCharacter = InstancesLib.DistanceFrom((ESP.CurrentSettings.ModelRoot or ESP.CurrentSettings.Model), rootPart)
-		if distanceFromCharacter > (ESP.CurrentSettings.MaxDistance or 5000) then
+		local screenPos, isOnScreen = worldToViewport(
+			GetPivot(ESP.CurrentSettings.ModelRoot or ESP.CurrentSettings.Model).Position
+		)
+
+		local distanceFromPlayer = InstancesLib.DistanceFrom(
+			(ESP.CurrentSettings.ModelRoot or ESP.CurrentSettings.Model),
+			(if Library.GlobalConfig.IgnoreCharacter == true then camera else rootPart)
+		)
+
+		if distanceFromPlayer > ESP.CurrentSettings.MaxDistance then
 			Hide()
 			return
 		end
@@ -798,7 +896,7 @@ function Library:Add(espSettings: ESPSettings)
 				local screenSize = camera.ViewportSize
 				local centerPos = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
 
-				-- use aspect to make oval circle (it's more accurate) (no its not mstudio)
+				-- use aspect to make oval circle
 				-- local aspectRatioX = screenSize.X / screenSize.Y;
 				-- local aspectRatioY = screenSize.Y / screenSize.X;
 				-- local arrowPosPixel = Vector2.new(arrowTable.ArrowInstance.Position.X.Scale, arrowTable.ArrowInstance.Position.Y.Scale) * 1000;
@@ -819,8 +917,8 @@ function Library:Add(espSettings: ESPSettings)
 					0,
 					centerPos.Y + (distance * math.sin(arctan) * invert)
 				)
-				Arrow.ImageColor3 = Library.GlobalConfig.Rainbow and Library.RainbowColor
-					or ESP.CurrentSettings.Arrow.Color
+				Arrow.ImageColor3 =
+					if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESP.CurrentSettings.Arrow.Color;
 			end
 		end
 
@@ -855,47 +953,54 @@ function Library:Add(espSettings: ESPSettings)
 		end
 
 		-- // Update Billboard // --
-		Billboard.Enabled = Library.GlobalConfig.Billboards == true;
+		if Billboard then
+			Billboard.Enabled = Library.GlobalConfig.Billboards == true;
 
-		if Billboard.Enabled then
-			if Library.GlobalConfig.Distance then
-				BillboardText.Text = string.format(
-					'%s\n<font size="%d">[%s]</font>',
-					ESP.CurrentSettings.Name,
-					ESP.CurrentSettings.TextSize - 3,
-					math.floor(distanceFromCharacter)
-				)
-			else
-				BillboardText.Text = ESP.CurrentSettings.Name
+			if Billboard.Enabled then
+				if Library.GlobalConfig.Distance then
+					BillboardText.Text = string.format(
+						'%s\n<font size="%d">[%s]</font>',
+						ESP.CurrentSettings.Name,
+						ESP.CurrentSettings.TextSize - 3,
+						math.floor(distanceFromPlayer)
+					)
+				else
+					BillboardText.Text = ESP.CurrentSettings.Name
+				end
+
+				BillboardText.Font = Library.GlobalConfig.Font
+				BillboardText.TextColor3 =
+					if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESP.CurrentSettings.Color;
+				BillboardText.TextSize = ESP.CurrentSettings.TextSize
 			end
-
-			BillboardText.Font = Library.GlobalConfig.Font
-			BillboardText.TextColor3 = Library.GlobalConfig.Rainbow and Library.RainbowColor
-				or ESP.CurrentSettings.Color
-			BillboardText.TextSize = ESP.CurrentSettings.TextSize
 		end
 
 		-- // Update Highlighter // --
-        Highlighter.Adornee = Library.GlobalConfig.Highlighters == true and ESP.CurrentSettings.Model or nil;
+		if Highlighter then
+			Highlighter.Adornee = Library.GlobalConfig.Highlighters == true and ESP.CurrentSettings.Model or nil;
+			Highlighter.Parent = if Highlighter.Adornee ~= nil then ActiveFolder else StorageFolder;
 
-        if Highlighter.Adornee then
-			if IsAdornment then
-				Highlighter.Color3 = Library.GlobalConfig.Rainbow and Library.RainbowColor or ESP.CurrentSettings.Color
-				Highlighter.Transparency = ESP.CurrentSettings.Transparency
-			elseif ESP.OriginalSettings.ESPType == "selectionbox" then
-				Highlighter.Color3 = Library.GlobalConfig.Rainbow and Library.RainbowColor or ESP.CurrentSettings.Color
-				Highlighter.LineThickness = ESP.CurrentSettings.Thickness
+			if Highlighter.Adornee then
+				if IsAdornment then
+					Highlighter.Color3 = Library.GlobalConfig.Rainbow and Library.RainbowColor or ESP.CurrentSettings.Color
+					Highlighter.Transparency = ESP.CurrentSettings.Transparency
 
-				Highlighter.SurfaceColor3 = ESP.CurrentSettings.SurfaceColor
-				Highlighter.SurfaceTransparency = ESP.CurrentSettings.Transparency
-			else
-				Highlighter.FillColor = Library.GlobalConfig.Rainbow and Library.RainbowColor
-					or ESP.CurrentSettings.FillColor
-				Highlighter.OutlineColor = Library.GlobalConfig.Rainbow and Library.RainbowColor
-					or ESP.CurrentSettings.OutlineColor
+				elseif ESP.OriginalSettings.ESPType == "selectionbox" then
+					Highlighter.Color3 = Library.GlobalConfig.Rainbow and Library.RainbowColor or ESP.CurrentSettings.Color
+					Highlighter.LineThickness = ESP.CurrentSettings.Thickness
 
-				Highlighter.FillTransparency = ESP.CurrentSettings.FillTransparency
-				Highlighter.OutlineTransparency = ESP.CurrentSettings.OutlineTransparency
+					Highlighter.SurfaceColor3 = ESP.CurrentSettings.SurfaceColor
+					Highlighter.SurfaceTransparency = ESP.CurrentSettings.Transparency
+
+				else
+					Highlighter.FillColor =
+						if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESP.CurrentSettings.FillColor;
+					Highlighter.OutlineColor =
+						if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESP.CurrentSettings.OutlineColor;
+
+					Highlighter.FillTransparency = ESP.CurrentSettings.FillTransparency
+					Highlighter.OutlineTransparency = ESP.CurrentSettings.OutlineTransparency
+				end
 			end
 		end
 	end
@@ -906,7 +1011,11 @@ function Library:Add(espSettings: ESPSettings)
 
 	ESP.RenderThread = coroutine.create(function()
 		while true do
-			ESP:Render()
+			local success, errorMessage = pcall(ESP.Render, ESP)
+			if not success then
+				task.defer(debug_error, "Failed to render ESP:", errorMessage)
+			end
+
 			coroutine.yield()
 		end
 	end)
@@ -914,12 +1023,14 @@ function Library:Add(espSettings: ESPSettings)
 	coroutine.resume(ESP.RenderThread)
 
 	Library.ESP[ESP.Index] = ESP
-	debug_print("ESP created.", ESP.Index)
+	debug_print("ESP created.", ESP.Index, "-", ESP.CurrentSettings.Name)
 	return ESP
 end
 
 -- // Update Player Variables // --
-table.insert(Library.Connections, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(UpdatePlayerVariables))
+table.insert(Library.Connections, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+	camera = workspace.CurrentCamera;
+end))
 table.insert(Library.Connections, Players.LocalPlayer.CharacterAdded:Connect(UpdatePlayerVariables))
 
 -- // Rainbow Handler // --
@@ -941,11 +1052,6 @@ end))
 
 -- // Main Handler // --
 table.insert(Library.Connections, RunService.RenderStepped:Connect(function()
-	if not (rootPart and camera) then
-		UpdatePlayerVariables()
-		task.wait()
-	end
-
 	for _, ESP in Library.ESP do
 		if not ESP then continue end
 		if not ESP.CurrentSettings.Model or not ESP.CurrentSettings.Model.Parent then
@@ -953,10 +1059,12 @@ table.insert(Library.Connections, RunService.RenderStepped:Connect(function()
 			continue
 		end
 
-		pcall(coroutine.resume, ESP.RenderThread)
+		if coroutine.status(ESP.RenderThread) == "suspended" then
+			coroutine.resume(ESP.RenderThread)
+		end
 	end
 end))
 
-debug_print("[mstudio45's ESP] Loaded! (v2)")
+debug_print("[mstudio45's ESP] Loaded! (" .. tostring(VERSION) ..")")
 getgenv().mstudio45_ESP = Library
 return Library
