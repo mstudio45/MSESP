@@ -812,6 +812,7 @@ function Library:Add(espSettings: ESPSettings)
 		Billboard.Enabled = true;
 
 		if Highlighter then
+			Highlighter.Adornee = ESP.CurrentSettings.Model;
 			Highlighter.Parent = ActiveFolder;
 		end
 
@@ -836,6 +837,7 @@ function Library:Add(espSettings: ESPSettings)
 		Billboard.Enabled = false;
 
 		if Highlighter then
+			Highlighter.Adornee = nil;
 			Highlighter.Parent = StorageFolder;
 		end
 
@@ -987,7 +989,7 @@ function Library:Add(espSettings: ESPSettings)
 		-- // Update Highlighter // --
 		if Highlighter then
 			Highlighter.Parent = if Library.GlobalConfig.Highlighters == true then ActiveFolder else StorageFolder;
-			Highlighter.Adornee = ESP.CurrentSettings.Model;
+			Highlighter.Adornee = if Library.GlobalConfig.Highlighters == true then ESP.CurrentSettings.Model else nil;
 
 			if Highlighter.Adornee then
 				if IsAdornment then
