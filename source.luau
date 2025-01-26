@@ -199,7 +199,7 @@ local InstancesLib = {
 		end
 
 		if properties["Parent"] ~= nil then
-			instance.Parent = properties.Parent
+			instance["Parent"] = properties["Parent"]
 		end
 
 		return instance
@@ -263,7 +263,7 @@ local ActiveFolder = InstancesLib.Create("Folder", {
 })
 
 local StorageFolder = InstancesLib.Create("Folder", {
-	Parent = game,
+	Parent = if typeof(game) == "userdata" then Players.Parent or game,
 	Name = RandomString()
 })
 
