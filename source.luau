@@ -162,11 +162,13 @@ local tablefreeze = function<T>(provided_table: T): T
 end
 
 --// Functions \\--
-local function GetPivot(Instance: Bone | Attachment | PVInstance)
+local function GetPivot(Instance: Bone | Attachment | CFrame | PVInstance)
 	if Instance.ClassName == "Bone" then
 		return Instance.TransformedWorldCFrame
 	elseif Instance.ClassName == "Attachment" then
 		return Instance.WorldCFrame
+	elseif Instance.ClassName == "Camera" then
+		return Instance.CFrame
 	else
 		return Instance:GetPivot()
 	end
@@ -888,7 +890,7 @@ function Library:Add(espSettings: ESPSettings)
 
 		local distanceFromPlayer = InstancesLib.DistanceFrom(
 			(ESP.CurrentSettings.ModelRoot or ESP.CurrentSettings.Model),
-			(if Library.GlobalConfig.IgnoreCharacter == true then camera else rootPart)
+			(if Library.GlobalConfig.IgnoreCharacter == true then (camera or rootPart) else rootPart)
 		)
 
 		if distanceFromPlayer > ESP.CurrentSettings.MaxDistance then
