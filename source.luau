@@ -139,7 +139,6 @@ local getui, gethui = nil, getgenv().gethui;
 
 --// Services \\--
 local Players = cloneref(game:GetService("Players"))
-local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
 local RunService = cloneref(game:GetService("RunService"))
 local UserInputService = cloneref(game:GetService("UserInputService"))
 local CoreGui = cloneref(game:GetService("CoreGui"))
@@ -266,7 +265,7 @@ local ActiveFolder = InstancesLib.Create("Folder", {
 })
 
 local StorageFolder = InstancesLib.Create("Folder", {
-	Parent = ReplicatedStorage,
+	Parent = game,
 	Name = RandomString()
 })
 
@@ -814,8 +813,13 @@ function Library:Add(espSettings: ESPSettings)
 			Highlighter.Adornee = ESP.CurrentSettings.Model;
 			Highlighter.Parent = ActiveFolder;
 		end
+
 		if Tracer then
 			Tracer.Visible = true;
+		end
+
+		if Arrow then
+			Arrow.Visible = true;
 		end
 	end
 
@@ -836,6 +840,10 @@ function Library:Add(espSettings: ESPSettings)
 
 		if Tracer then
 			Tracer.Visible = false;
+		end
+
+		if Arrow then
+			Arrow.Visible = false;
 		end
 	end
 
