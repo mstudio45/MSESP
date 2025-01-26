@@ -1065,6 +1065,6 @@ table.insert(Library.Connections, RunService.RenderStepped:Connect(function()
 	end
 end))
 
-debug_print("[mstudio45's ESP] Loaded! (" .. tostring(VERSION) ..")")
+debug_print("Loaded! (" .. tostring(VERSION) ..")")
 getgenv().mstudio45_ESP = Library
 return Library
