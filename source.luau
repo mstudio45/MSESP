@@ -135,7 +135,7 @@ export type ESPSettings = {
 
 --// Executor Variables \\--
 local cloneref = getgenv().cloneref or function(inst) return inst; end
-local getui, gethui = nil, getgenv().gethui;
+local getui;
 
 --// Services \\--
 local Players = cloneref(game:GetService("Players"))
@@ -243,15 +243,13 @@ local InstancesLib = {
 do
 	local testGui = Instance.new("ScreenGui")
 	local successful = pcall(function()
-		testGui.Parent = typeof(gethui) == "function" and gethui() or CoreGui;
+		testGui.Parent = CoreGui;
 	end)
 
 	if not successful then
-		debug_warn("gethui and CoreGUI is not accessible!")
-		gethui = function() return Players.LocalPlayer.PlayerGui; end
-		getui = gethui;
+		debug_warn("CoreGUI is not accessible!")
+		getui = function() return Players.LocalPlayer.PlayerGui; end;
 	else
-		gethui = typeof(gethui) == "function" and gethui or function() return CoreGui end;
 		getui = function() return CoreGui end;
 	end
 
@@ -260,7 +258,7 @@ end
 
 --// GUI \\--
 local ActiveFolder = InstancesLib.Create("Folder", {
-	Parent = CoreGui,
+	Parent = getui(),
 	Name = RandomString()
 })
 
@@ -270,7 +268,7 @@ local StorageFolder = InstancesLib.Create("Folder", {
 })
 
 local MainGUI = InstancesLib.Create("ScreenGui", {
-	Parent = gethui(),
+	Parent = getui(),
 	Name = RandomString(),
 	IgnoreGuiInset = true,
 	ResetOnSpawn = false,
@@ -335,8 +333,8 @@ local function worldToViewport(...)
 	return camera:WorldToViewportPoint(...)
 end
 
-local function UpdatePlayerVariables(newCharacter)
-	if Library.GlobalConfig.IgnoreCharacter == true then
+local function UpdatePlayerVariables(newCharacter: any, force: boolean?)
+	if force ~= true and Library.GlobalConfig.IgnoreCharacter == true then
 		debug_warn("UpdatePlayerVariables: IgnoreCharacter enabled.")
 		return
 	end
@@ -344,12 +342,13 @@ local function UpdatePlayerVariables(newCharacter)
 
 	character = newCharacter or Players.LocalPlayer.Character or Players.LocalPlayer.CharacterAdded:Wait();
 	rootPart =
-		character:FindFirstChild("HumanoidRootPart")
-		or character:FindFirstChild("UpperTorso")
-		or character:FindFirstChild("Torso")
-		or character.PrimaryPart;
+		character:WaitForChild("HumanoidRootPart", 2.5)
+		or character:WaitForChild("UpperTorso", 2.5)
+		or character:WaitForChild("Torso", 2.5)
+		or character.PrimaryPart
+		or character:WaitForChild("Head", 2.5);
 end
-if Players.LocalPlayer.Character then UpdatePlayerVariables(); else task.spawn(UpdatePlayerVariables) end;
+task.spawn(UpdatePlayerVariables, nil, true);
 
 --// Library Functions \\--
 function Library:Clear()
@@ -800,7 +799,7 @@ function Library:Add(espSettings: ESPSettings)
 
 	-- // Setup Update Handler // --
 	local function Show(forceShow: boolean?)
-		if ESP.Deleted then return; end
+		if ESP.Deleted == true then return; end
 		if forceShow ~= true and not ESP.Hidden then
 			return
 		end
@@ -824,7 +823,7 @@ function Library:Add(espSettings: ESPSettings)
 	end
 
 	local function Hide(forceHide: boolean?)
-		if ESP.Deleted then return; end
+		if ESP.Deleted == true then return; end
 		if forceHide ~= true and ESP.Hidden then
 			return
 		end
