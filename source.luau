@@ -870,7 +870,7 @@ function Library:Add(espSettings: ESPSettings)
 	end
 
 	function ESP:Render()
-		if ESP.Deleted == true then return end
+		if not (ESP ~= nil and ESP.CurrentSettings ~= nil) or ESP.Deleted == true then return end
 		if
 			ESP.CurrentSettings.Visible == false or
 			not camera or
