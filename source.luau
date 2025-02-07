@@ -2,77 +2,77 @@
 --!nolint UnknownGlobal
 --[[
 
-         ▄▄▄▄███▄▄▄▄      ▄████████         ▄████████    ▄████████    ▄███████▄
-        ▄██▀▀▀███▀▀▀██▄   ███    ███        ███    ███   ███    ███   ███    ███
-        ███   ███   ███   ███    █▀         ███    █▀    ███    █▀    ███    ███
-        ███   ███   ███   ███              ▄███▄▄▄       ███          ███    ███
-        ███   ███   ███ ▀███████████      ▀▀███▀▀▀     ▀███████████ ▀█████████▀
-        ███   ███   ███          ███        ███    █▄           ███   ███
-        ███   ███   ███    ▄█    ███        ███    ███    ▄█    ███   ███
-        ▀█   ███   █▀   ▄████████▀         ██████████  ▄████████▀   ▄████▀
-                                    v2.0.2
+		 ▄▄▄▄███▄▄▄▄      ▄████████         ▄████████    ▄████████    ▄███████▄
+		▄██▀▀▀███▀▀▀██▄   ███    ███        ███    ███   ███    ███   ███    ███
+		███   ███   ███   ███    █▀         ███    █▀    ███    █▀    ███    ███
+		███   ███   ███   ███              ▄███▄▄▄       ███          ███    ███
+		███   ███   ███ ▀███████████      ▀▀███▀▀▀     ▀███████████ ▀█████████▀
+		███   ███   ███          ███        ███    █▄           ███   ███
+		███   ███   ███    ▄█    ███        ███    ███    ▄█    ███   ███
+		▀█   ███   █▀   ▄████████▀         ██████████  ▄████████▀   ▄████▀
+									v2.0.2
 
-                         Created by mstudio45 (Discord)
-                Contributors: Dottik, Master Oogway, deividcomsono
+						 Created by mstudio45 (Discord)
+				Contributors: Dottik, Master Oogway, deividcomsono
 --]]
 
 --[[
-    https://docs.mstudio45.com/
+	https://docs.mstudio45.com/
 
-    ESPLib:Add({
-        Name : string [optional]
+	ESPLib:Add({
+		Name : string [optional]
 
-        Model : Object
-        TextModel : Object [optional]
-        
-        -- General Settings --
-        Visible : boolean [optional]
-        Color : Color3 [default = Color3.new]
-        MaxDistance : number [optional, default = 5000]
-        
-        -- Billboard Settings --
-        StudsOffset : Vector3 [optional]
-        TextSize : number [optional, default = 16]
-        
-        -- Highlighter Settings --
-        ESPType : Text | SphereAdornment | CylinderAdornment | Adornment | SelectionBox | Highlight [default = Highlight]
-        Thickness : number [optional, default = 0.1]
-        Transparency : number [optional, default = 0.65]
+		Model : Object
+		TextModel : Object [optional]
+		
+		-- General Settings --
+		Visible : boolean [optional]
+		Color : Color3 [default = Color3.new]
+		MaxDistance : number [optional, default = 5000]
+		
+		-- Billboard Settings --
+		StudsOffset : Vector3 [optional]
+		TextSize : number [optional, default = 16]
+		
+		-- Highlighter Settings --
+		ESPType : Text | SphereAdornment | CylinderAdornment | Adornment | SelectionBox | Highlight [default = Highlight]
+		Thickness : number [optional, default = 0.1]
+		Transparency : number [optional, default = 0.65]
 
-        -- Note: All Adornment Types use Color and Transparency, no need to add them again to the table 
+		-- Note: All Adornment Types use Color and Transparency, no need to add them again to the table 
 
-        -- SelectionBox (only include when ESPType is SelectionBox) --
-        SurfaceColor : Color3 [default = Color3.new]
-    
-        -- Highlight (only include when ESPType is Highlight) --
-        FillColor : Color3 [default = Color3.new]
-        OutlineColor : Color3 [default = Color3.new(1, 1, 1)]
-    
-        FillTransparency : number [optional, default = 0.65]
-        OutlineTransparency : number [optional, default = 0]
-            
-        -- Tracer Settings --
-        Tracer = {
-            Enabled : boolean [required, default = false]
+		-- SelectionBox (only include when ESPType is SelectionBox) --
+		SurfaceColor : Color3 [default = Color3.new]
+	
+		-- Highlight (only include when ESPType is Highlight) --
+		FillColor : Color3 [default = Color3.new]
+		OutlineColor : Color3 [default = Color3.new(1, 1, 1)]
+	
+		FillTransparency : number [optional, default = 0.65]
+		OutlineTransparency : number [optional, default = 0]
+			
+		-- Tracer Settings --
+		Tracer = {
+			Enabled : boolean [required, default = false]
 
-            Color : Color3 [optional, default = Color3.new]
-            Thickness : number [optional, default = 2]
-            Transparency : number [optional, default = 0] -- Note: Transparency works the opposite way than in Roblox
-            From : Top | Bottom | Center | Mouse [optional, default = Bottom]
-        }
+			Color : Color3 [optional, default = Color3.new]
+			Thickness : number [optional, default = 2]
+			Transparency : number [optional, default = 0] -- Note: Transparency works the opposite way than in Roblox
+			From : Top | Bottom | Center | Mouse [optional, default = Bottom]
+		}
 
-        -- Arrow Settings --
-        Arrow = {
-            Enabled : boolean [required, default = false]
+		-- Arrow Settings --
+		Arrow = {
+			Enabled : boolean [required, default = false]
 
-            Color : Color3 [optional, default = Color3.new]
-            CenterOffset : number [optional, default = 300]
-        }
+			Color : Color3 [optional, default = Color3.new]
+			CenterOffset : number [optional, default = 300]
+		}
 
-        -- OnDestroy Settings --
-        OnDestroy : BindableEvent [optional]
-        OnDestroyFunc : function [optional]
-    })
+		-- OnDestroy Settings --
+		OnDestroy : BindableEvent [optional]
+		OnDestroyFunc : function [optional]
+	})
 --]]
 
 local VERSION = "2.0.2";
@@ -801,7 +801,7 @@ function Library:Add(espSettings: ESPSettings)
 
 	-- // Setup Update Handler // --
 	local function Show(forceShow: boolean?)
-		if ESP.Deleted == true then return; end
+		if not (ESP and ESP.Deleted ~= true) then return end
 		if forceShow ~= true and not ESP.Hidden then
 			return
 		end
@@ -826,7 +826,7 @@ function Library:Add(espSettings: ESPSettings)
 	end
 
 	local function Hide(forceHide: boolean?)
-		if ESP.Deleted == true then return; end
+		if not (ESP and ESP.Deleted ~= true) then return end
 		if forceHide ~= true and ESP.Hidden then
 			return
 		end
@@ -856,6 +856,8 @@ function Library:Add(espSettings: ESPSettings)
 	end
 
 	function ESP:Hide(force: boolean?)
+		if not (ESP and ESP.CurrentSettings and ESP.Deleted ~= true) then return end
+
 		ESP.CurrentSettings.Visible = false
 		Hide(force);
 	end
@@ -870,7 +872,7 @@ function Library:Add(espSettings: ESPSettings)
 	end
 
 	function ESP:Render()
-		if not (ESP ~= nil and ESP.CurrentSettings ~= nil) or ESP.Deleted == true then return end
+		if not (ESP and ESP.CurrentSettings and ESP.Deleted ~= true) then return end
 		if
 			ESP.CurrentSettings.Visible == false or
 			not camera or
@@ -901,9 +903,9 @@ function Library:Add(espSettings: ESPSettings)
 
 		-- // Update Arrow (only requires distance check) // --
 		if Arrow then
-            Arrow.Visible = Library.GlobalConfig.Arrows == true and ESP.CurrentSettings.Arrow.Enabled == true and (isOnScreen ~= true)
+			Arrow.Visible = Library.GlobalConfig.Arrows == true and ESP.CurrentSettings.Arrow.Enabled == true and (isOnScreen ~= true)
 
-            if Arrow.Visible then
+			if Arrow.Visible then
 				local screenSize = camera.ViewportSize
 				local centerPos = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
 
@@ -1026,7 +1028,7 @@ function Library:Add(espSettings: ESPSettings)
 			if not success then
 				task.defer(debug_error, "Failed to render ESP:", errorMessage)
 			end
-			
+
 			coroutine.yield()
 		end
 	end)
@@ -1063,8 +1065,16 @@ end))
 
 -- // Main Handler // --
 table.insert(Library.Connections, RunService.RenderStepped:Connect(function()
-	for _, ESP in Library.ESP do
-		if not ESP then continue end
+	for Index, ESP in Library.ESP do
+		if not (ESP and ESP.CurrentSettings and ESP.Deleted ~= true) then
+			if ESP and ESP.RenderThread then
+				pcall(coroutine.close, ESP.RenderThread)
+			end
+
+			Library.ESP[Index] = nil
+			continue
+		end
+
 		if not ESP.CurrentSettings.Model or not ESP.CurrentSettings.Model.Parent then
 			ESP:Destroy()
 			continue
