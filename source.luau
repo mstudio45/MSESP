@@ -10,7 +10,7 @@
 		███   ███   ███          ███        ███    █▄           ███   ███
 		███   ███   ███    ▄█    ███        ███    ███    ▄█    ███   ███
 		▀█   ███   █▀   ▄████████▀         ██████████  ▄████████▀   ▄████▀
-									v2.0.2
+									v2.0.3
 
 						 Created by mstudio45 (Discord)
 				Contributors: Dottik, Master Oogway, deividcomsono
@@ -72,13 +72,19 @@
 		-- OnDestroy Settings --
 		OnDestroy : BindableEvent [optional]
 		OnDestroyFunc : function [optional]
+
+		-- Custom Update Functions --
+		BeforeUpdate : function [optional]
+		AfterUpdate : function [optional]
 	})
 --]]
 
-local VERSION = "2.0.2";
-local debug_print = if getgenv().mstudio45_ESP_DEBUG then (function(...) print("[mstudio45's ESP]", ...) end) else (function() end);
-local debug_warn  = if getgenv().mstudio45_ESP_DEBUG then (function(...) warn("[mstudio45's ESP]", ...) end) else (function() end);
-local debug_error = if getgenv().mstudio45_ESP_DEBUG then (function(...) error("[mstudio45's ESP] " .. table.concat({ ... }, " ")) end) else (function() end);
+local VERSION = "2.0.3";
+local DEBUG_ENABLED = getgenv().mstudio45_ESP_DEBUG == true;
+
+local debug_print = if DEBUG_ENABLED then (function(...) print("[mstudio45's ESP]", ...) end) else (function() end);
+local debug_warn  = if DEBUG_ENABLED then (function(...) warn("[mstudio45's ESP]", ...) end) else (function() end);
+-- local debug_error = if DEBUG_ENABLED then (function(...) error("[mstudio45's ESP] " .. table.concat({ ... }, " ")) end) else (function() end);
 
 if getgenv().mstudio45_ESP then
 	debug_warn("Already Loaded.")
@@ -131,6 +137,9 @@ export type ESPSettings = {
 
 	OnDestroy: BindableEvent?,
 	OnDestroyFunc: (() -> nil)?,
+
+	BeforeUpdate: ((self: ESPSettings) -> nil)?,
+	AfterUpdate: ((self: ESPSettings) -> nil)?
 }
 
 --// Executor Variables \\--
@@ -183,6 +192,23 @@ local function RandomString(length: number?)
 	end
 
 	return table.concat(array)
+end
+
+function SafeCallback(Func: (...any) -> ...any, ...: any)
+    if not (Func and typeof(Func) == "function") then
+        return
+    end
+
+    local Result = table.pack(xpcall(Func, function(Error)
+        task.defer(error, debug.traceback(Error, 2))
+        return Error
+    end, ...))
+
+    if not Result[1] then
+        return nil
+    end
+
+    return table.unpack(Result, 2, Result.n)
 end
 
 -- // Instances // --
@@ -275,7 +301,7 @@ local MainGUI = InstancesLib.Create("ScreenGui", {
 	IgnoreGuiInset = true,
 	ResetOnSpawn = false,
 	ClipToDeviceSafeArea = false,
-	DisplayOrder = 999_999
+	DisplayOrder = 999999
 })
 
 local BillboardGUI = InstancesLib.Create("ScreenGui", {
@@ -284,7 +310,7 @@ local BillboardGUI = InstancesLib.Create("ScreenGui", {
 	IgnoreGuiInset = true,
 	ResetOnSpawn = false,
 	ClipToDeviceSafeArea = false,
-	DisplayOrder = 999_999
+	DisplayOrder = 999999
 })
 
 -- // Library // --
@@ -296,8 +322,12 @@ local Library = {
 	StorageFolder = StorageFolder,
 	MainGUI = MainGUI,
 	BillboardGUI = BillboardGUI,
-	ESP = {},
+
+	-- // Connections // --
 	Connections = {},
+
+	-- // ESP // --
+	ESP = {},
 
 	-- // Global Config // --
 	GlobalConfig = {
@@ -321,26 +351,25 @@ local Library = {
 }
 
 -- // Player Variables // --
-local character: Model
-local rootPart: Part?
-local camera: Camera = workspace.CurrentCamera
+local character: Model;
+local rootPart: Part?;
+local camera: Camera = workspace.CurrentCamera;
 
 local function worldToViewport(...)
 	camera = (camera or workspace.CurrentCamera);
-
 	if camera == nil then
-		return Vector2.new(0, 0), false
+		return Vector2.new(0, 0), false;
 	end
 
-	return camera:WorldToViewportPoint(...)
+	return camera:WorldToViewportPoint(...);
 end
 
 local function UpdatePlayerVariables(newCharacter: any, force: boolean?)
 	if force ~= true and Library.GlobalConfig.IgnoreCharacter == true then
-		debug_warn("UpdatePlayerVariables: IgnoreCharacter enabled.")
-		return
-	end
-	debug_print("Updating Player Variables...")
+		debug_warn("UpdatePlayerVariables: IgnoreCharacter enabled.");
+		return;
+	end;
+	debug_print("Updating Player Variables...");
 
 	character = newCharacter or Players.LocalPlayer.Character or Players.LocalPlayer.CharacterAdded:Wait();
 	rootPart =
@@ -369,9 +398,11 @@ function Library:Destroy()
 		return
 	end
 
+	-- // Destroy Library // --
 	Library.Destroyed = true;
 	Library:Clear();
 
+	-- // Destroy Folders // --
 	ActiveFolder:Destroy();
 	StorageFolder:Destroy();
 	MainGUI:Destroy();
@@ -379,17 +410,15 @@ function Library:Destroy()
 
 	--// Clear connections \\--
 	for _, connection in Library.Connections do
-		if not connection.Connected then
-			continue
+		if connection and connection.Connected then
+			connection:Disconnect()
 		end
-
-		connection:Disconnect()
 	end
-
 	table.clear(Library.Connections)
 
+	-- // Clear getgenv // --
 	getgenv().mstudio45_ESP = nil;
-	debug_print("Unloaded!")
+	debug_print("Unloaded!");
 end
 
 --// Type Checks \\--
@@ -577,8 +606,7 @@ function Library:Add(espSettings: ESPSettings)
 
 		Hidden = false,
 		Deleted = false,
-		Connections = {} :: { RBXScriptConnection },
-		RenderThread = nil :: thread?
+		Connections = {} :: { RBXScriptConnection }
 	}
 
 	debug_print("Creating ESP...", ESP.Index, "-", ESP.CurrentSettings.Name)
@@ -751,23 +779,19 @@ function Library:Add(espSettings: ESPSettings)
 
 	-- // Setup Delete Handler // --
 	function ESP:Destroy()
+		debug_print("Deleting ESP...", tostring(ESP.Index) .. " - " .. tostring(ESP.CurrentSettings.Name))
+
 		if ESP.Deleted == true then
 			debug_warn("ESP Instance is already deleted.")
 			return;
 		end
 
-		debug_print("Deleting ESP...", ESP.Index, "-", ESP.CurrentSettings.Name)
+		-- // Clear from ESP // --
 		ESP.Deleted = true
-
-		if ESP.RenderThread then
-			debug_print("Stopping render coroutine", ESP.Index, "-", ESP.CurrentSettings.Name)
-			pcall(coroutine.close, ESP.RenderThread)
-		end
 
 		if table.find(Library.ESP, ESP.Index) then
 			table.remove(Library.ESP, table.find(Library.ESP, ESP.Index))
 		end
-
 		Library.ESP[ESP.Index] = nil
 
 		--// Delete ESP Instances \\--
@@ -778,24 +802,22 @@ function Library:Add(espSettings: ESPSettings)
 
 		--// Clear connections \\--
 		for _, connection in ESP.Connections do
-			if not connection.Connected then
-				continue
+			if connection and connection.Connected then
+				connection:Disconnect()
 			end
-
-			connection:Disconnect()
 		end
-
 		table.clear(ESP.Connections)
-
+		
 		--// OnDestroy \\--
 		if ESP.OriginalSettings.OnDestroy then
-			pcall(ESP.OriginalSettings.OnDestroy.Fire, ESP.OriginalSettings.OnDestroy)
+			SafeCallback(ESP.OriginalSettings.OnDestroy.Fire, ESP.OriginalSettings.OnDestroy)
 		end
 
 		if ESP.OriginalSettings.OnDestroyFunc then
-			pcall(ESP.OriginalSettings.OnDestroyFunc)
+			SafeCallback(ESP.OriginalSettings.OnDestroyFunc)
 		end
 
+		ESP.Render = function(...) end
 		debug_print("ESP deleted.", ESP.Index, "-", ESP.CurrentSettings.Name)
 	end
 
@@ -872,38 +894,42 @@ function Library:Add(espSettings: ESPSettings)
 	end
 
 	function ESP:Render()
-		if not (ESP and ESP.CurrentSettings and ESP.Deleted ~= true) then return end
-		if
-			ESP.CurrentSettings.Visible == false or
-			not camera or
-			(if Library.GlobalConfig.IgnoreCharacter == true then false else not rootPart)
-		then
+		--// Check if ESP is valid // --
+		if not ESP then return end
+
+		local ESPSettings = ESP.CurrentSettings
+		if ESP.Deleted == true or not ESPSettings then return end
+		
+		-- // Early exit conditions // --
+		if not (ESPSettings.Visible and camera and (if Library.GlobalConfig.IgnoreCharacter == true then true else rootPart)) then
 			Hide()
 			return
 		end
 
 		-- // Check Distance // --
-		if not ESP.CurrentSettings.ModelRoot then
-			ESP.CurrentSettings.ModelRoot = InstancesLib.FindPrimaryPart(ESP.CurrentSettings.Model)
+		if not ESPSettings.ModelRoot then
+			ESPSettings.ModelRoot = InstancesLib.FindPrimaryPart(ESPSettings.Model)
 		end
 
-		local screenPos, isOnScreen = worldToViewport(
-			GetPivot(ESP.CurrentSettings.ModelRoot or ESP.CurrentSettings.Model).Position
-		)
+		local modelRoot = ESPSettings.ModelRoot or ESPSettings.Model
+		local distanceFromPlayer = InstancesLib.DistanceFrom(modelRoot, rootPart or camera)
 
-		local distanceFromPlayer = InstancesLib.DistanceFrom(
-			(ESP.CurrentSettings.ModelRoot or ESP.CurrentSettings.Model),
-			(if Library.GlobalConfig.IgnoreCharacter == true then (camera or rootPart) else rootPart)
-		)
-
-		if distanceFromPlayer > ESP.CurrentSettings.MaxDistance then
+		if distanceFromPlayer > ESPSettings.MaxDistance then
 			Hide()
 			return
 		end
 
+		-- // Get Screen Information // --
+		local screenPos, isOnScreen = worldToViewport(GetPivot(modelRoot).Position)
+
+		--// Before Update Callback \\--
+		if ESPSettings.BeforeUpdate then
+			SafeCallback(ESPSettings.BeforeUpdate, ESP)
+		end
+
 		-- // Update Arrow (only requires distance check) // --
 		if Arrow then
-			Arrow.Visible = Library.GlobalConfig.Arrows == true and ESP.CurrentSettings.Arrow.Enabled == true and (isOnScreen ~= true)
+			Arrow.Visible = Library.GlobalConfig.Arrows == true and ESPSettings.Arrow.Enabled == true and (isOnScreen ~= true);
 
 			if Arrow.Visible then
 				local screenSize = camera.ViewportSize
@@ -913,25 +939,25 @@ function Library:Add(espSettings: ESPSettings)
 				-- local aspectRatioX = screenSize.X / screenSize.Y;
 				-- local aspectRatioY = screenSize.Y / screenSize.X;
 				-- local arrowPosPixel = Vector2.new(arrowTable.ArrowInstance.Position.X.Scale, arrowTable.ArrowInstance.Position.Y.Scale) * 1000;
-				local partPos = Vector2.new(screenPos.X, screenPos.Y)
+				local partPos = Vector2.new(screenPos.X, screenPos.Y);
 
-				local IsInverted = screenPos.Z <= 0
-				local invert = (IsInverted and -1 or 1)
+				local IsInverted = screenPos.Z <= 0;
+				local invert = (IsInverted and -1 or 1);
 
-				local direction = (partPos - centerPos)
-				local arctan = math.atan2(direction.Y, direction.X)
-				local angle = math.deg(arctan) + 90
-				local distance = (ESP.CurrentSettings.Arrow.CenterOffset * 0.001) * screenSize.Y
+				local direction = (partPos - centerPos);
+				local arctan = math.atan2(direction.Y, direction.X);
+				local angle = math.deg(arctan) + 90;
+				local distance = (ESPSettings.Arrow.CenterOffset * 0.001) * screenSize.Y;
 
-				Arrow.Rotation = angle + 180 * (IsInverted and 0 or 1)
+				Arrow.Rotation = angle + 180 * (IsInverted and 0 or 1);
 				Arrow.Position = UDim2.new(
 					0,
 					centerPos.X + (distance * math.cos(arctan) * invert),
 					0,
 					centerPos.Y + (distance * math.sin(arctan) * invert)
-				)
+				);
 				Arrow.ImageColor3 =
-					if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESP.CurrentSettings.Arrow.Color;
+					if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Arrow.Color;
 			end
 		end
 
@@ -942,26 +968,28 @@ function Library:Add(espSettings: ESPSettings)
 
 		-- // Update Tracer // --
 		if Tracer then
-			Tracer.Visible = Library.GlobalConfig.Tracers == true and ESP.CurrentSettings.Tracer.Enabled == true;
+			Tracer.Visible = Library.GlobalConfig.Tracers == true and ESPSettings.Tracer.Enabled == true;
 
 			if Tracer.Visible then
-				if ESP.CurrentSettings.Tracer.From == "mouse" then
+				-- // Position // --
+				if ESPSettings.Tracer.From == "mouse" then
 					local mousePos = UserInputService:GetMouseLocation()
-					Tracer.From = Vector2.new(mousePos.X, mousePos.Y)
-				elseif ESP.CurrentSettings.Tracer.From == "top" then
-					Tracer.From = Vector2.new(camera.ViewportSize.X / 2, 0)
-				elseif ESP.CurrentSettings.Tracer.From == "center" then
-					Tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+					Tracer.From = Vector2.new(mousePos.X, mousePos.Y);
+				elseif ESPSettings.Tracer.From == "top" then
+					Tracer.From = Vector2.new(camera.ViewportSize.X / 2, 0);
+				elseif ESPSettings.Tracer.From == "center" then
+					Tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2);
 				else
-					Tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+					Tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y);
 				end
 
-				Tracer.To = Vector2.new(screenPos.X, screenPos.Y)
+				Tracer.To = Vector2.new(screenPos.X, screenPos.Y);
 
-				Tracer.Transparency = ESP.CurrentSettings.Tracer.Transparency
-				Tracer.Thickness = ESP.CurrentSettings.Tracer.Thickness
-				Tracer.Color3 = Library.GlobalConfig.Rainbow and Library.RainbowColor
-					or ESP.CurrentSettings.Tracer.Color
+				-- // Visuals // --
+				Tracer.Transparency = ESPSettings.Tracer.Transparency;
+				Tracer.Thickness = ESPSettings.Tracer.Thickness;
+				Tracer.Color3 = 
+					if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Tracer.Color;
 			end
 		end
 
@@ -973,67 +1001,61 @@ function Library:Add(espSettings: ESPSettings)
 				if Library.GlobalConfig.Distance then
 					BillboardText.Text = string.format(
 						'%s\n<font size="%d">[%s]</font>',
-						ESP.CurrentSettings.Name,
-						ESP.CurrentSettings.TextSize - 3,
+						ESPSettings.Name,
+						ESPSettings.TextSize - 3,
 						math.floor(distanceFromPlayer)
-					)
+					);
 				else
-					BillboardText.Text = ESP.CurrentSettings.Name
+					BillboardText.Text = ESPSettings.Name;
 				end
 
-				BillboardText.Font = Library.GlobalConfig.Font
+				BillboardText.Font = Library.GlobalConfig.Font;
 				BillboardText.TextColor3 =
-					if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESP.CurrentSettings.Color;
-				BillboardText.TextSize = ESP.CurrentSettings.TextSize
+					if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color;
+				BillboardText.TextSize = ESPSettings.TextSize;
 			end
 		end
 
 		-- // Update Highlighter // --
 		if Highlighter then
 			Highlighter.Parent = if Library.GlobalConfig.Highlighters == true then ActiveFolder else StorageFolder;
-			Highlighter.Adornee = if Library.GlobalConfig.Highlighters == true then ESP.CurrentSettings.Model else nil;
+			Highlighter.Adornee = if Library.GlobalConfig.Highlighters == true then ESPSettings.Model else nil;
 
 			if Highlighter.Adornee then
 				if IsAdornment then
-					Highlighter.Color3 = Library.GlobalConfig.Rainbow and Library.RainbowColor or ESP.CurrentSettings.Color
-					Highlighter.Transparency = ESP.CurrentSettings.Transparency
+					Highlighter.Color3 = 
+						if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color;
+					Highlighter.Transparency = ESPSettings.Transparency
 
 				elseif ESP.OriginalSettings.ESPType == "selectionbox" then
-					Highlighter.Color3 = Library.GlobalConfig.Rainbow and Library.RainbowColor or ESP.CurrentSettings.Color
-					Highlighter.LineThickness = ESP.CurrentSettings.Thickness
+					Highlighter.Color3 = 
+						if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color;
+					Highlighter.LineThickness = ESPSettings.Thickness;
 
-					Highlighter.SurfaceColor3 = ESP.CurrentSettings.SurfaceColor
-					Highlighter.SurfaceTransparency = ESP.CurrentSettings.Transparency
+					Highlighter.SurfaceColor3 = ESPSettings.SurfaceColor;
+					Highlighter.SurfaceTransparency = ESPSettings.Transparency;
 
 				else
 					Highlighter.FillColor =
-						if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESP.CurrentSettings.FillColor;
+						if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.FillColor;
 					Highlighter.OutlineColor =
-						if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESP.CurrentSettings.OutlineColor;
+						if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.OutlineColor;
 
-					Highlighter.FillTransparency = ESP.CurrentSettings.FillTransparency
-					Highlighter.OutlineTransparency = ESP.CurrentSettings.OutlineTransparency
+					Highlighter.FillTransparency = ESPSettings.FillTransparency;
+					Highlighter.OutlineTransparency = ESPSettings.OutlineTransparency;
 				end
 			end
+		end
+
+		--// After Update Callback \\--
+		if ESPSettings.AfterUpdate then
+			SafeCallback(ESPSettings.AfterUpdate, ESP)
 		end
 	end
 
 	if not ESP.OriginalSettings.Visible then
 		Hide()
 	end
-
-	ESP.RenderThread = coroutine.create(function()
-		while true do
-			local success, errorMessage = pcall(ESP.Render, ESP)
-			if not success then
-				task.defer(debug_error, "Failed to render ESP:", errorMessage)
-			end
-
-			coroutine.yield()
-		end
-	end)
-
-	coroutine.resume(ESP.RenderThread)
 
 	Library.ESP[ESP.Index] = ESP
 	debug_print("ESP created.", ESP.Index, "-", ESP.CurrentSettings.Name)
@@ -1048,6 +1070,11 @@ table.insert(Library.Connections, Players.LocalPlayer.CharacterAdded:Connect(Upd
 
 -- // Rainbow Handler // --
 table.insert(Library.Connections, RunService.RenderStepped:Connect(function(Delta)
+	--//  Only update rainbow if it's enabled // --
+	if not Library.GlobalConfig.Rainbow then
+		return
+	end
+	
 	Library.RainbowStep = Library.RainbowStep + Delta
 
 	if Library.RainbowStep >= (1 / 60) then
@@ -1066,21 +1093,21 @@ end))
 -- // Main Handler // --
 table.insert(Library.Connections, RunService.RenderStepped:Connect(function()
 	for Index, ESP in Library.ESP do
-		if not (ESP and ESP.CurrentSettings and ESP.Deleted ~= true) then
-			if ESP and ESP.RenderThread then
-				pcall(coroutine.close, ESP.RenderThread)
-			end
-
+		if not ESP then 
 			Library.ESP[Index] = nil
-			continue
+			continue 
 		end
 
-		if not ESP.CurrentSettings.Model or not ESP.CurrentSettings.Model.Parent then
+		if 
+			ESP.Deleted == true or 
+			not (ESP.CurrentSettings and (ESP.CurrentSettings.Model and ESP.CurrentSettings.Model.Parent)) 
+		then
 			ESP:Destroy()
 			continue
 		end
 
-		pcall(coroutine.resume, ESP.RenderThread)
+		-- // Render ESP // --
+		pcall(ESP.Render, ESP)
 	end
 end))
 
