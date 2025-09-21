@@ -1069,26 +1069,14 @@ end))
 table.insert(Library.Connections, Players.LocalPlayer.CharacterAdded:Connect(UpdatePlayerVariables))
 
 -- // Rainbow Handler // --
-table.insert(Library.Connections, RunService.RenderStepped:Connect(function(Delta)
-	--//  Only update rainbow if it's enabled // --
-	if not Library.GlobalConfig.Rainbow then
-		return
-	end
-	
-	Library.RainbowStep = Library.RainbowStep + Delta
+local TweenService = game:GetService("TweenService")
+local hue = Instance.new("NumberValue")
 
-	if Library.RainbowStep >= (1 / 60) then
-		Library.RainbowStep = 0
+hue.Changed:Connect(function()
+	Library.RainbowColor = Color3.fromHSV(hue.Value, 0.8, 1)
+end)
 
-		Library.RainbowHueSetup = Library.RainbowHueSetup + (1 / 400)
-		if Library.RainbowHueSetup > 1 then
-			Library.RainbowHueSetup = 0
-		end
-
-		Library.RainbowHue = Library.RainbowHueSetup
-		Library.RainbowColor = Color3.fromHSV(Library.RainbowHue, 0.8, 1)
-	end
-end))
+TweenService:Create(hue, TweenInfo.new(6, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1), {Value = 1}):Play()
 
 -- // Main Handler // --
 table.insert(Library.Connections, RunService.RenderStepped:Connect(function()
@@ -1113,4 +1101,5 @@ end))
 
 debug_print("Loaded! (" .. tostring(VERSION) ..")")
 getgenv().mstudio45_ESP = Library
+
 return Library
