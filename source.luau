@@ -10,7 +10,7 @@
 		███   ███   ███          ███        ███    █▄           ███   ███
 		███   ███   ███    ▄█    ███        ███    ███    ▄█    ███   ███
 		▀█   ███   █▀   ▄████████▀         ██████████  ▄████████▀   ▄████▀
-								   v2.1.0
+								   v2.1.3
 
 						Created by mstudio45 (Discord)
 				Contributors: Dottik, Master Oogway, deividcomsono
@@ -19,7 +19,7 @@
 
 local getgenv = getgenv or function() return shared end
 
-local VERSION = "2.1.0";
+local VERSION = "2.1.3";
 local DEBUG_ENABLED = getgenv().mstudio45_ESP_DEBUG == true;
 
 local debug_print = if DEBUG_ENABLED then (function(...) print("[mstudio45's ESP]", ...) end) else (function() end);
