@@ -1361,6 +1361,10 @@ local Components = {}; do
 			if not BoxPath then return end
 			if BoxPath.Visible == Visible then return end
 
+			if not Visible then
+				BoxPath:SetControlPoints({})
+			end
+
 			BoxPath.Parent = if Visible then MainGUI else StorageFolder;
 			BoxPath.Visible = Visible;
 		end
@@ -1894,7 +1898,7 @@ function Library:Add(espSettings: ESPSettings)
 				if Library.GlobalConfig.IgnoreCharacter == true then true else RootPart
 			)
 		) then
-			Hide()
+			Hide(true)
 			return
 		end
 
@@ -1908,7 +1912,7 @@ function Library:Add(espSettings: ESPSettings)
 		ESP._LastDistance = DistanceFromPlayer
 
 		if DistanceFromPlayer > ESPSettings.MaxDistance then
-			Hide()
+			Hide(true)
 			return
 		end
 
