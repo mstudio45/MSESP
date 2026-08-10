@@ -8,5 +8,5 @@ Add `mstudio45/msesp` to your `wally.toml`:
 
 ```toml
 [dependencies]
-msesp = "mstudio45/msesp@2.1.3"
+msesp = "mstudio45/msesp@2.1.4"
 ```
