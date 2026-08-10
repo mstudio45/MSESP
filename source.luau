@@ -210,10 +210,12 @@ local cloneref = getgenv().cloneref or function(inst) return inst; end
 -- // GUI Variables // --
 local GuiParent, StorageParent;
 local CoreGuiAllowed = false;
+local RobloxStorageAllowed = false;
 
 -- // Services // --
-local Players = cloneref(game:GetService("Players"))
+local RobloxReplicatedStorage = nil
 local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local Players = cloneref(game:GetService("Players"))
 local RunService = cloneref(game:GetService("RunService"))
 local UserInputService = cloneref(game:GetService("UserInputService"))
 local CoreGui = cloneref(game:GetService("CoreGui"))
@@ -359,25 +361,43 @@ local InstancesLib = {
 
 -- // Thread Identity Test // --
 do
+	--// Test
 	local testGui = Instance.new("ScreenGui")
-	local successful = pcall(function()
+	local successCoreGui = pcall(function()
 		if not CoreGui then error("CoreGui is nil") end
 
 		testGui.Parent = CoreGui;
 	end)
 
-	CoreGuiAllowed = successful;
-	if not successful then
-		debug_warn("CoreGUI is not accessible!")
+	local testFolder = Instance.new("Folder")
+	local successStorage = pcall(function(...)
+		RobloxReplicatedStorage = cloneref(game:GetService("RobloxReplicatedStorage"))
 
-		GuiParent = Players.LocalPlayer.PlayerGui;
-		StorageParent = ReplicatedStorage;
-	else
+		testFolder.Parent = RobloxReplicatedStorage
+	end)
+
+	CoreGuiAllowed = successCoreGui and CoreGui ~= nil;
+	RobloxStorageAllowed = successStorage and RobloxReplicatedStorage ~= nil;
+
+	--// UI
+	if CoreGuiAllowed then
 		GuiParent = CoreGui;
-		StorageParent = typeof(game) == "userdata" and Players.Parent or game;
+	else
+		debug_warn("CoreGui is not accessible!")
+		GuiParent = Players.LocalPlayer.PlayerGui;
 	end
 
+	--// Storage
+	if RobloxStorageAllowed then
+		StorageParent = RobloxReplicatedStorage;
+	else
+		debug_warn("RobloxReplicatedStorage is not accessible!")
+		StorageParent = ReplicatedStorage;
+	end
+
+	--// Destroy
 	testGui:Destroy()
+	testFolder:Destroy()
 end
 
 -- // Storage // --
