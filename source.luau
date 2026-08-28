@@ -86,6 +86,13 @@ export type ESPSettings = {
 	StudsOffset: Vector3?,
 	TextSize: number?,
 
+	-- // Bounding Box Settings // --
+	BoundingMode: ("BoundingBox" | "PrimaryPart" | "HumanoidRootPart" | "Hitbox" | "Character")?,
+	CharacterSize: Vector3?,
+
+	BoundingBoxSmoothing: number?,
+	BoundingBoxRefreshRate: number?,
+
 	-- // ESP Type Settings // --
 	ESPType: ("Text" | "SphereAdornment" | "CylinderAdornment" | "Adornment" | "SelectionBox" | "Highlight"),
 	Thickness: number?,
@@ -146,7 +153,13 @@ local DefaultSettings: ESPSettings = {
 	
 	StudsOffset = Vector3.new(),
 	TextSize = 16,
-	
+
+	-- // Bounding Box Settings // --
+	BoundingMode = "BoundingBox",
+	CharacterSize = Vector3.new(4, 6, 2),
+	BoundingBoxSmoothing = 0.15,
+	BoundingBoxRefreshRate = 0,
+
 	-- // ESP Type Settings // --
 	ESPType = "Highlight",
 	Thickness = 0.1,
@@ -567,33 +580,177 @@ local AllowedESPType = {
 	highlight = true,
 }
 
+local AllowedBoundingMode = {
+	boundingbox = true,
+	primarypart = true,
+	humanoidrootpart = true,
+	hitbox = true,
+	character = true,
+}
+
 -- // Helper Functions // --
-local function GetModelCorners(Model: Instance?)
-	if not Model then
-		return false, {}, {}, 0, 0, 0, 0;
+local function GetHumanoidRootPart(Model: Instance?): BasePart?
+	if typeof(Model) ~= "Instance" or not Model:IsA("Model") then
+		return nil
 	end
 
-	-- // Calculate Bounding Box // --
-	local ModelCFrame, ModelSize = nil, nil
+	local HRP = Model:FindFirstChild("HumanoidRootPart")
+	if HRP and HRP:IsA("BasePart") then
+		return HRP
+	end
+
+	local Humanoid = Model:FindFirstChildOfClass("Humanoid")
+	local RootPart = Humanoid and InstancesLib.TryGetProperty(Humanoid, "RootPart")
+	if typeof(RootPart) == "Instance" and RootPart:IsA("BasePart") then
+		return RootPart
+	end
+
+	return nil
+end
+
+local function GetHitboxPart(Model: Instance?): BasePart?
+	if typeof(Model) ~= "Instance" or not Model:IsA("Model") then
+		return nil
+	end
+
+	local ExplicitHitbox = Model:FindFirstChild("Hitbox", true) or Model:FindFirstChild("HitBox", true)
+	if ExplicitHitbox and ExplicitHitbox:IsA("BasePart") then
+		return ExplicitHitbox
+	end
+
+	return nil
+end
+
+local function IsPlayerCharacter(Model: Instance?): boolean
+	if typeof(Model) ~= "Instance" or not Model:IsA("Model") then
+		return false
+	end
+
+	return Players:GetPlayerFromCharacter(Model) ~= nil
+end
+
+local function ResolveBoundingAnchorPart(Model: Instance?, BoundingMode: string?): BasePart?
+	if typeof(Model) ~= "Instance" or not Model:IsA("Model") then
+		return nil
+	end
+
+	local Mode = string.lower(BoundingMode or "boundingbox")
+
+	if Mode == "humanoidrootpart" then
+		return GetHumanoidRootPart(Model)
+
+	elseif Mode == "primarypart" then
+		if IsPlayerCharacter(Model) then
+			return GetHumanoidRootPart(Model)
+		end
+
+		local PrimaryPart = Model.PrimaryPart
+		return if PrimaryPart and PrimaryPart:IsA("BasePart") then PrimaryPart else nil
+
+	elseif Mode == "hitbox" then
+		return GetHitboxPart(Model)
+
+	elseif Mode == "character" then
+		return GetHumanoidRootPart(Model) or Model.PrimaryPart
+	end
+
+	return nil
+end
+
+local function ComputeRawBoundingBox(Model: Instance?, BoundingMode: string?, CharacterSize: Vector3?)
+	if typeof(Model) ~= "Instance" then
+		return nil, nil
+	end
+
+	local Mode = string.lower(BoundingMode or "boundingbox")
 
 	if Model:IsA("Model") then
-		ModelCFrame, ModelSize = Model:GetBoundingBox()
-	else
-		if not InstancesLib.TryGetProperty(Model, "Size") then
-			local PrimaryPart = InstancesLib.FindPrimaryPart(Model)
-
-			if InstancesLib.TryGetProperty(PrimaryPart, "Size") then
-				ModelCFrame = PrimaryPart.CFrame
-				ModelSize = PrimaryPart.Size
+		if Mode == "humanoidrootpart" then
+			local HRP = GetHumanoidRootPart(Model)
+			if HRP then
+				return HRP.CFrame, HRP.Size
 			end
-		else
-			ModelCFrame = Model.CFrame
-			ModelSize = Model.Size
+			return nil, nil
+
+		elseif Mode == "primarypart" then
+			local Anchor = ResolveBoundingAnchorPart(Model, "PrimaryPart")
+			if Anchor then
+				return Anchor.CFrame, Anchor.Size
+			end
+			return nil, nil
+
+		elseif Mode == "hitbox" then
+			local HitboxPart = GetHitboxPart(Model)
+			if HitboxPart then
+				return HitboxPart.CFrame, HitboxPart.Size
+			end
+			return nil, nil
+
+		elseif Mode == "character" then
+			local Anchor = GetHumanoidRootPart(Model) or Model.PrimaryPart
+			if Anchor then
+				return Anchor.CFrame, CharacterSize or Vector3.new(4, 6, 2)
+			end
+			return nil, nil
+		end
+
+		return Model:GetBoundingBox()
+	end
+
+	if not InstancesLib.TryGetProperty(Model, "Size") then
+		return nil, nil
+	end
+
+	return Model.CFrame, Model.Size
+end
+
+local function UpdateBoundingBoxCache(ESP, Delta: number?)
+	local ESPSettings = ESP.CurrentSettings
+
+	local Cache = ESP._BoundingCache
+	if not Cache then
+		Cache = { RawCFrame = nil, RawSize = nil, CFrame = nil, Size = nil, Elapsed = 0 }
+		ESP._BoundingCache = Cache
+	end
+
+	local RefreshRate = ESPSettings.BoundingBoxRefreshRate or 0
+	Cache.Elapsed = Cache.Elapsed + (Delta or 0)
+
+	if (not Cache.RawCFrame) or RefreshRate <= 0 or Cache.Elapsed >= RefreshRate then
+		Cache.Elapsed = 0
+
+		local RawCFrame, RawSize = ComputeRawBoundingBox(
+			ESPSettings.Model,
+			ESPSettings.BoundingMode,
+			ESPSettings.CharacterSize
+		)
+
+		if RawCFrame and RawSize then
+			Cache.RawCFrame = RawCFrame
+			Cache.RawSize = RawSize
 		end
 	end
 
+	if not (Cache.RawCFrame and Cache.RawSize) then
+		Cache.CFrame = nil
+		Cache.Size = nil
+		return
+	end
+
+	local Smoothing = math.clamp(ESPSettings.BoundingBoxSmoothing or 1, 0.01, 1)
+
+	if Smoothing >= 1 or not Cache.CFrame then
+		Cache.CFrame = Cache.RawCFrame
+		Cache.Size = Cache.RawSize
+	else
+		Cache.CFrame = Cache.CFrame:Lerp(Cache.RawCFrame, Smoothing)
+		Cache.Size = Cache.Size:Lerp(Cache.RawSize, Smoothing)
+	end
+end
+
+local function GetModelCorners(ModelCFrame: CFrame?, ModelSize: Vector3?)
 	if not (ModelCFrame and ModelSize) then
-		return false, {}, {}, 0, 0, 0, 0
+		return false, {}, {}, 0, 0, 0, 0;
 	end
 
 	-- // Corners // --
@@ -761,50 +918,142 @@ local Components = {}; do
 			debug_warn("Library is destroyed, please reload it.")
 			return
 		end
-		
-		if not ESP then 
-			return 
+
+		if not ESP then
+			return
 		end
 
 		-- // Create Highlighter // --
 		local Highlighter = nil
 
+		local CharacterHighlights = {}
 		local ESPType = string.lower(ESP.CurrentSettings.ESPType)
 		local IsAdornment = string.match(ESPType, "adornment")
 
-		debug_print("Creating Highlighter...", ESPType, IsAdornment)
-		if IsAdornment then
-			local _, ModelSize = nil, nil
+		local CharacterBodyPartNames = {
+			["Head"] = true,
 
-			if ESP.CurrentSettings.Model:IsA("Model") then
-				_, ModelSize = ESP.CurrentSettings.Model:GetBoundingBox()
-			else
-				if not InstancesLib.TryGetProperty(ESP.CurrentSettings.Model, "Size") then
-					local PrimaryPart = InstancesLib.FindPrimaryPart(ESP.CurrentSettings.Model)
+			-- R6
+			["Torso"] = true,
+			["Left Arm"] = true,
+			["Right Arm"] = true,
+			["Left Leg"] = true,
+			["Right Leg"] = true,
 
-					if not InstancesLib.TryGetProperty(PrimaryPart, "Size") then
-						debug_print("Couldn't get model size, switching to Highlight.", ESP.Index, "-", ESP.CurrentSettings.Name)
+			-- R15
+			["UpperTorso"] = true,
+			["LowerTorso"] = true,
+			["LeftUpperArm"] = true,
+			["LeftLowerArm"] = true,
+			["LeftHand"] = true,
+			["RightUpperArm"] = true,
+			["RightLowerArm"] = true,
+			["RightHand"] = true,
+			["LeftUpperLeg"] = true,
+			["LeftLowerLeg"] = true,
+			["LeftFoot"] = true,
+			["RightUpperLeg"] = true,
+			["RightLowerLeg"] = true,
+			["RightFoot"] = true,
+		}
 
-						ESP.CurrentSettings.ESPType = "Highlight"
-						return Library:Add(ESP.CurrentSettings)
-					end
+		local function IsCharacterHighlightMode()
+			return ESPType == "highlight"
+				and string.lower(tostring(ESP.CurrentSettings.BoundingMode)) == "character"
+		end
 
-					ModelSize = PrimaryPart.Size
-				else
-					ModelSize = ESP.CurrentSettings.Model.Size
+		local function GetDesiredAdornee(): Instance?
+			if IsAdornment then
+				return ESP.CurrentSettings.Model
+			end
+
+			return ResolveBoundingAnchorPart(ESP.CurrentSettings.Model, ESP.CurrentSettings.BoundingMode)
+				or ESP.CurrentSettings.Model
+		end
+
+		local function DestroyCharacterHighlights()
+			for Part, PartHighlight in pairs(CharacterHighlights) do
+				if PartHighlight then
+					PartHighlight:Destroy()
 				end
+				CharacterHighlights[Part] = nil
+			end
+		end
+
+		local function SyncCharacterHighlights(visible: boolean)
+			if not IsCharacterHighlightMode() then
+				DestroyCharacterHighlights()
+				return
+			end
+
+			local Model = ESP.CurrentSettings.Model
+			if typeof(Model) ~= "Instance" then
+				DestroyCharacterHighlights()
+				return
+			end
+
+			local Seen = {}
+			local Parent = if visible then ActiveFolder else StorageFolder
+
+			for _, Child in ipairs(Model:GetChildren()) do
+				if Child:IsA("BasePart") and CharacterBodyPartNames[Child.Name] then
+					Seen[Child] = true
+
+					local PartHighlight = CharacterHighlights[Child]
+					if not PartHighlight then
+						PartHighlight = InstancesLib.Create("Highlight", {
+							Parent = Parent,
+							Name = ESP.Index,
+							Adornee = if visible then Child else nil,
+
+							FillColor = ESP.CurrentSettings.FillColor,
+							OutlineColor = ESP.CurrentSettings.OutlineColor,
+							FillTransparency = ESP.CurrentSettings.FillTransparency,
+							OutlineTransparency = ESP.CurrentSettings.OutlineTransparency,
+						})
+
+						CharacterHighlights[Child] = PartHighlight
+					else
+						if PartHighlight.Parent ~= Parent then
+							PartHighlight.Parent = Parent
+						end
+
+						PartHighlight.Adornee = if visible then Child else nil
+					end
+				end
+			end
+
+			for Part, PartHighlight in pairs(CharacterHighlights) do
+				if not Seen[Part] or not Part:IsDescendantOf(Model) then
+					if PartHighlight then
+						PartHighlight:Destroy()
+					end
+					CharacterHighlights[Part] = nil
+				end
+			end
+		end
+
+		debug_print("Creating Highlighter...", ESPType, IsAdornment)
+
+		if IsAdornment then
+			local _, ModelSize = ComputeRawBoundingBox(
+				ESP.CurrentSettings.Model,
+				ESP.CurrentSettings.BoundingMode,
+				ESP.CurrentSettings.CharacterSize
+			)
+
+			if not ModelSize then
+				debug_warn("Couldn't get model size, skipping Adornment Highlighter creation.", ESP.Index, "-", ESP.CurrentSettings.Name)
+				return
 			end
 
 			if ESPType == "sphereadornment" then
 				Highlighter = InstancesLib.Create("SphereHandleAdornment", {
 					Parent = ActiveFolder,
 					Name = ESP.Index,
-
 					Adornee = ESP.CurrentSettings.Model,
-
 					AlwaysOnTop = true,
 					ZIndex = 10,
-
 					Radius = ModelSize.X * 1.085,
 					CFrame = CFrame.new() * CFrame.Angles(math.rad(90), 0, 0),
 
@@ -817,12 +1066,9 @@ local Components = {}; do
 				Highlighter = InstancesLib.Create("CylinderHandleAdornment", {
 					Parent = ActiveFolder,
 					Name = ESP.Index,
-
 					Adornee = ESP.CurrentSettings.Model,
-
 					AlwaysOnTop = true,
 					ZIndex = 10,
-
 					Height = ModelSize.Y * 2,
 					Radius = ModelSize.X * 1.085,
 					CFrame = CFrame.new() * CFrame.Angles(math.rad(90), 0, 0),
@@ -835,12 +1081,9 @@ local Components = {}; do
 				Highlighter = InstancesLib.Create("BoxHandleAdornment", {
 					Parent = ActiveFolder,
 					Name = ESP.Index,
-
 					Adornee = ESP.CurrentSettings.Model,
-
 					AlwaysOnTop = true,
 					ZIndex = 10,
-
 					Size = ModelSize,
 
 					-- // Settings // --
@@ -853,53 +1096,59 @@ local Components = {}; do
 			Highlighter = InstancesLib.Create("SelectionBox", {
 				Parent = ActiveFolder,
 				Name = ESP.Index,
-
-				Adornee = ESP.CurrentSettings.Model,
-
+				Adornee = GetDesiredAdornee(),
 				Color3 = ESP.CurrentSettings.BorderColor,
 				LineThickness = ESP.CurrentSettings.Thickness,
-
 				SurfaceColor3 = ESP.CurrentSettings.SurfaceColor,
 				SurfaceTransparency = ESP.CurrentSettings.Transparency
 			})
 
 		elseif ESPType == "highlight" then
-			Highlighter = InstancesLib.Create("Highlight", {
-				Parent = ActiveFolder,
-				Name = ESP.Index,
+			if IsCharacterHighlightMode() then
+				SyncCharacterHighlights(true)
+			else
+				Highlighter = InstancesLib.Create("Highlight", {
+					Parent = ActiveFolder,
+					Name = ESP.Index,
+					Adornee = GetDesiredAdornee(),
 
-				Adornee = ESP.CurrentSettings.Model,
-
-				-- // Settings // --
-				FillColor = ESP.CurrentSettings.FillColor,
-				OutlineColor = ESP.CurrentSettings.OutlineColor,
-
-				FillTransparency = ESP.CurrentSettings.FillTransparency,
-				OutlineTransparency = ESP.CurrentSettings.OutlineTransparency
-			})
+					-- // Settings // --
+					FillColor = ESP.CurrentSettings.FillColor,
+					OutlineColor = ESP.CurrentSettings.OutlineColor,
+					FillTransparency = ESP.CurrentSettings.FillTransparency,
+					OutlineTransparency = ESP.CurrentSettings.OutlineTransparency
+				})
+			end
 		end
 
 		-- // Highlighter Data // --
 		local function SetVisible(visible: boolean)
+			if IsCharacterHighlightMode() then
+				SyncCharacterHighlights(visible)
+				return
+			end
+
 			if not Highlighter then return end
 
-			local Parent = if visible then ActiveFolder else StorageFolder;
-			if Highlighter.Parent == Parent then return end
+			local Parent = if visible then ActiveFolder else StorageFolder
+			if Highlighter.Parent ~= Parent then
+				Highlighter.Parent = Parent
+			end
 
-			Highlighter.Parent  = Parent;
-			Highlighter.Adornee = if visible then ESP.CurrentSettings.Model else nil;
+			Highlighter.Adornee = if visible then GetDesiredAdornee() else nil
 		end
 
 		local HighlighterData = {}
 		HighlighterData.Destroy = function(self)
-			if not Highlighter then return end
+			DestroyCharacterHighlights()
 
-			Highlighter:Destroy();
-			Highlighter = nil;
+			if Highlighter then
+				Highlighter:Destroy()
+				Highlighter = nil
+			end
 		end
 
 		HighlighterData.Update = function(self)
-			if not Highlighter then return end
 
 			-- // ESP Settings // --
 			if not ESP._LastScreenPos then return end
@@ -908,53 +1157,86 @@ local Components = {}; do
 			local _screenPos, isOnScreen = unpack(ESP._LastScreenPos)
 			local HighlightEnabled = isOnScreen == true and (Library.GlobalConfig.Highlighters == true)
 
-			SetVisible(HighlightEnabled);
+			SetVisible(HighlightEnabled)
 			if not HighlightEnabled then return end
 
 			-- // Update Visuals // --
+			if IsCharacterHighlightMode() then
+				for _, PartHighlight in pairs(CharacterHighlights) do
+					PartHighlight.FillColor = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.FillColor
+					PartHighlight.OutlineColor = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.OutlineColor
+					PartHighlight.FillTransparency = ESPSettings.FillTransparency
+					PartHighlight.OutlineTransparency = ESPSettings.OutlineTransparency
+				end
+				return
+			end
+
+			if not Highlighter then return end
+
+			if not IsAdornment then
+				local DesiredAdornee = GetDesiredAdornee()
+				if Highlighter.Adornee ~= DesiredAdornee then
+					Highlighter.Adornee = DesiredAdornee
+				end
+			end
+
 			if IsAdornment then
-				Highlighter.Color3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color;
+				Highlighter.Color3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color
 				Highlighter.Transparency = ESPSettings.Transparency
 
+				local BoundingCache = ESP._BoundingCache
+				local CacheSize = BoundingCache and BoundingCache.Size
+				if CacheSize then
+					if ESPType == "sphereadornment" then
+						Highlighter.Radius = CacheSize.X * 1.085
+					elseif ESPType == "cylinderadornment" then
+						Highlighter.Height = CacheSize.Y * 2
+						Highlighter.Radius = CacheSize.X * 1.085
+					else
+						Highlighter.Size = CacheSize
+					end
+				end
 			elseif ESPType == "selectionbox" then
-				Highlighter.Color3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color;
-				Highlighter.LineThickness = ESPSettings.Thickness;
-
-				Highlighter.SurfaceColor3 = ESPSettings.SurfaceColor;
-				Highlighter.SurfaceTransparency = ESPSettings.Transparency;
-
+				Highlighter.Color3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color
+				Highlighter.LineThickness = ESPSettings.Thickness
+				Highlighter.SurfaceColor3 = ESPSettings.SurfaceColor
+				Highlighter.SurfaceTransparency = ESPSettings.Transparency
 			else
-				Highlighter.FillColor = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.FillColor;
-				Highlighter.OutlineColor = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.OutlineColor;
-
-				Highlighter.FillTransparency = ESPSettings.FillTransparency;
-				Highlighter.OutlineTransparency = ESPSettings.OutlineTransparency;
+				Highlighter.FillColor = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.FillColor
+				Highlighter.OutlineColor = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.OutlineColor
+				Highlighter.FillTransparency = ESPSettings.FillTransparency
+				Highlighter.OutlineTransparency = ESPSettings.OutlineTransparency
 			end
 		end
 
 		return setmetatable({}, {
 			__newindex = function(table, key, value)
-				if not Highlighter then return end
-
 				if key == "Visible" then
 					assert(
-						typeof(value) == "boolean", 
+						typeof(value) == "boolean",
 						string.format("Visible; expected boolean, got %s", typeof(value))
 					)
 
-					SetVisible(value);
+					SetVisible(value)
 				else
-					rawset(HighlighterData, key, value);
+					rawset(HighlighterData, key, value)
 				end
 			end,
 
 			__index = function(table, key)
-				if not Highlighter then return nil end
-
 				if key == "Visible" then
-					return Highlighter.Adornee ~= nil;
+					if IsCharacterHighlightMode() then
+						for _, PartHighlight in pairs(CharacterHighlights) do
+							if PartHighlight.Adornee ~= nil then
+								return true
+							end
+						end
+						return false
+					end
+
+					return Highlighter ~= nil and Highlighter.Adornee ~= nil
 				else
-					return rawget(HighlighterData, key);
+					return rawget(HighlighterData, key)
 				end
 			end,
 
@@ -1294,7 +1576,11 @@ local Components = {}; do
 			if not Box2DEnabled then return end
 
 			-- // Corners // --
-			local isCornerOnScreen, _corners, _screenCorners, minX, minY, maxX, maxY = GetModelCorners(ESPSettings.Model);
+			local BoundingCache = ESP._BoundingCache
+			local isCornerOnScreen, _corners, _screenCorners, minX, minY, maxX, maxY = GetModelCorners(
+				BoundingCache and BoundingCache.CFrame,
+				BoundingCache and BoundingCache.Size
+			);
 			if not isCornerOnScreen then
 				Frame.Visible = false
 				return
@@ -1413,7 +1699,11 @@ local Components = {}; do
 			end
 
 			-- // Path // --
-			local _isCornerOnScreen, _corners, screenCorners, _minX, _minY, _maxX, _maxY = GetModelCorners(ESPSettings.Model);
+			local BoundingCache = ESP._BoundingCache
+			local _isCornerOnScreen, _corners, screenCorners, _minX, _minY, _maxX, _maxY = GetModelCorners(
+				BoundingCache and BoundingCache.CFrame,
+				BoundingCache and BoundingCache.Size
+			);
 			if not (screenCorners and screenCorners[1]) then
 				SetVisible(false);
 				return
@@ -1732,11 +2022,37 @@ function Library:Add(espSettings: ESPSettings)
 		string.format("espSettings.ESPType; invalid ESPType, got %s", espSettings.ESPType)
 	)
 
+	-- // Fix BoundingMode // --
+	if not espSettings.BoundingMode then espSettings.BoundingMode = "BoundingBox" end
+	assert(
+		typeof(espSettings.BoundingMode) == "string",
+		string.format("espSettings.BoundingMode; expected string, got %s", typeof(espSettings.BoundingMode))
+	)
+
+	espSettings.BoundingMode = string.lower(espSettings.BoundingMode)
+	assert(
+		AllowedBoundingMode[espSettings.BoundingMode] == true,
+		string.format("espSettings.BoundingMode; invalid BoundingMode, got %s", espSettings.BoundingMode)
+	)
+
 	-- // Fix Settings // --
 	espSettings.Name = if typeof(espSettings.Name) == "string" then espSettings.Name else espSettings.Model.Name;
 	espSettings.TextModel = if typeof(espSettings.TextModel) == "Instance" then espSettings.TextModel else espSettings.Model;
 	
 	espSettings = Validate(espSettings, DefaultSettings)
+
+	if string.match(espSettings.ESPType, "adornment") then
+		local _, ModelSize = ComputeRawBoundingBox(espSettings.Model, espSettings.BoundingMode, espSettings.CharacterSize)
+
+		if not ModelSize then
+			debug_warn(string.format(
+				"Couldn't determine a model size for ESPType \"%s\", falling back to \"highlight\". (%s)",
+				espSettings.ESPType, espSettings.Name
+			))
+
+			espSettings.ESPType = "highlight"
+		end
+	end
 
 	-- // ESP Data // --
 	local ESP = {
@@ -1906,7 +2222,7 @@ function Library:Add(espSettings: ESPSettings)
 	end
 
 	-- // Setup Render Handler // --
-	function ESP:Render()
+	function ESP:Render(Delta: number?)
 		if not ESP then return end
 
 		local ESPSettings = ESP.CurrentSettings
@@ -1939,6 +2255,9 @@ function Library:Add(espSettings: ESPSettings)
 		-- // Get Screen Information // --
 		local screenPos, isOnScreen = WorldToViewport(GetPivot(ModelRoot).Position)
 		ESP._LastScreenPos = { screenPos, isOnScreen }
+
+		-- // Update Bounding Box Cache // --
+		UpdateBoundingBoxCache(ESP, Delta)
 
 		-- // Before Update Callback // --
 		if ESPSettings.BeforeUpdate then
@@ -1996,7 +2315,7 @@ table.insert(Library.Connections, RunService.RenderStepped:Connect(function(Delt
 end))
 
 -- // Main Handler // --
-table.insert(Library.Connections, RunService.RenderStepped:Connect(function()
+table.insert(Library.Connections, RunService.RenderStepped:Connect(function(Delta)
 	for Index, ESP in Library.ESP do
 		if not ESP then 
 			Library.ESP[Index] = nil
@@ -2012,7 +2331,7 @@ table.insert(Library.Connections, RunService.RenderStepped:Connect(function()
 		end
 
 		-- // Render ESP // --
-		ESP.Render(ESP)
+		ESP.Render(ESP, Delta)
 	end
 end))
 
