@@ -280,6 +280,52 @@ local function SafeCallback(Func: (...any) -> ...any, ...: any)
 	return table.unpack(Result, 2, Result.n)
 end
 
+-- // Dirty State Helper // --
+local function CreateDirtyState()
+	local Cache = {}
+
+	return function(Instance: Instance, Property: string, Value: any): boolean
+		if Cache[Property] == Value then
+			return false
+		end
+
+		Cache[Property] = Value;
+		(Instance :: any)[Property] = Value
+
+		return true
+	end
+end
+
+-- // Batched Cleanup Queue // --
+local CLEANUP_PER_FRAME = 20
+
+local CleanupQueue = {}
+local CleanupQueueSize = 0
+
+local function QueueDestroy(Object: (Instance | { Destroy: (any) -> () })?)
+	if not Object then return end
+
+	CleanupQueueSize += 1
+	CleanupQueue[CleanupQueueSize] = Object
+end
+
+local function DrainCleanupQueue()
+	if CleanupQueueSize == 0 then return end
+
+	for _ = 1, math.min(CLEANUP_PER_FRAME, CleanupQueueSize) do
+		local Object = CleanupQueue[CleanupQueueSize]
+		CleanupQueue[CleanupQueueSize] = nil
+		CleanupQueueSize -= 1
+
+		if not Object then continue end
+
+		local success, err = pcall(Object.Destroy, Object)
+		if not success then
+			debug_warn("Error destroying queued object:\n", err)
+		end
+	end
+end
+
 local Validate; Validate = function(Table: { [string]: any }, Template: { [string]: any }): { [string]: any }
 	if typeof(Table) ~= "table" then
 		return Template
@@ -567,6 +613,70 @@ local AllowedESPType = {
 	highlight = true,
 }
 
+-- // Bounding Box Cache // --
+local BOUNDING_BOX_REFRESH_INTERVAL = 1 -- // Seconds; set to 0 to rely purely on descendant-change invalidation. // --
+
+local BoundingBoxCache = setmetatable({}, { __mode = "k" }) :: { [Instance]: {
+	Size: Vector3?,
+	Offset: CFrame?,
+	Dirty: boolean,
+	LastRefresh: number,
+	Connections: { RBXScriptConnection },
+} }
+
+local function InvalidateBoundingBoxCache(Model: Instance)
+	local Cache = BoundingBoxCache[Model]
+	if Cache then
+		Cache.Dirty = true
+	end
+end
+
+local function GetCachedBoundingBox(Model: Model): (CFrame?, Vector3?)
+	local Cache = BoundingBoxCache[Model]
+
+	if not Cache then
+		Cache = {
+			Dirty = true,
+			LastRefresh = 0,
+			Connections = {},
+		} :: any
+
+		BoundingBoxCache[Model] = Cache
+
+		-- // Only recalculate the bounding box when the model's descendants change // --
+		table.insert(Cache.Connections, Model.DescendantAdded:Connect(function()
+			InvalidateBoundingBoxCache(Model)
+		end))
+		table.insert(Cache.Connections, Model.DescendantRemoving:Connect(function()
+			InvalidateBoundingBoxCache(Model)
+		end))
+	end
+
+	local IsStale = Cache.Dirty
+		or (BOUNDING_BOX_REFRESH_INTERVAL > 0 and (os.clock() - Cache.LastRefresh) >= BOUNDING_BOX_REFRESH_INTERVAL)
+
+	if IsStale then
+		local Success, BBCFrame, BBSize = pcall(Model.GetBoundingBox, Model)
+
+		if Success then
+			local Pivot = Model:GetPivot()
+
+			Cache.Size = BBSize
+			Cache.Offset = Pivot:ToObjectSpace(BBCFrame)
+			Cache.Dirty = false
+			Cache.LastRefresh = os.clock()
+		else
+			debug_warn("Failed to calculate bounding box for", Model:GetFullName(), "-", BBCFrame)
+		end
+	end
+
+	if not (Cache.Size and Cache.Offset) then
+		return nil, nil
+	end
+
+	return Model:GetPivot() * Cache.Offset, Cache.Size
+end
+
 -- // Helper Functions // --
 local function GetModelCorners(Model: Instance?)
 	if not Model then
@@ -577,7 +687,7 @@ local function GetModelCorners(Model: Instance?)
 	local ModelCFrame, ModelSize = nil, nil
 
 	if Model:IsA("Model") then
-		ModelCFrame, ModelSize = Model:GetBoundingBox()
+		ModelCFrame, ModelSize = GetCachedBoundingBox(Model)
 	else
 		if not InstancesLib.TryGetProperty(Model, "Size") then
 			local PrimaryPart = InstancesLib.FindPrimaryPart(Model)
@@ -685,11 +795,14 @@ local Components = {}; do
 		})
 
 		-- // Billboard Data // --
+		local SetBillboardProp = CreateDirtyState()
+		local SetBillboardTextProp = CreateDirtyState()
+
 		local BillboardData = {}
 		BillboardData.Destroy = function(self)
 			if not Billboard then return end
 			
-			Billboard:Destroy();
+			QueueDestroy(Billboard);
 			Billboard = nil;
 		end;
 
@@ -704,24 +817,24 @@ local Components = {}; do
 			local DistanceFromPlayer = ESP._LastDistance or 0
 			local BillboardEnabled = isOnScreen == true and (Library.GlobalConfig.Billboards == true);
 			
-			Billboard.Enabled = BillboardEnabled;
+			SetBillboardProp(Billboard, "Enabled", BillboardEnabled);
 			if not BillboardEnabled then return end
 
 			-- // Update Visuals // --
 			if Library.GlobalConfig.Distance then
-				BillboardText.Text = string.format(
+				SetBillboardTextProp(BillboardText, "Text", string.format(
 					'%s\n<font size="%d">[%s]</font>',
 					ESPSettings.Name,
 					ESPSettings.TextSize - 3,
 					math.floor(DistanceFromPlayer)
-				);
+				));
 			else
-				BillboardText.Text = ESPSettings.Name;
+				SetBillboardTextProp(BillboardText, "Text", ESPSettings.Name);
 			end
 
-			BillboardText.Font = Library.GlobalConfig.Font;
-			BillboardText.TextColor3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color;
-			BillboardText.TextSize = ESPSettings.TextSize;
+			SetBillboardTextProp(BillboardText, "Font", Library.GlobalConfig.Font);
+			SetBillboardTextProp(BillboardText, "TextColor3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color);
+			SetBillboardTextProp(BillboardText, "TextSize", ESPSettings.TextSize);
 		end;
 
 		return setmetatable({}, {
@@ -890,11 +1003,13 @@ local Components = {}; do
 			Highlighter.Adornee = if visible then ESP.CurrentSettings.Model else nil;
 		end
 
+		local SetHighlighterProp = CreateDirtyState()
+
 		local HighlighterData = {}
 		HighlighterData.Destroy = function(self)
 			if not Highlighter then return end
 
-			Highlighter:Destroy();
+			QueueDestroy(Highlighter);
 			Highlighter = nil;
 		end
 
@@ -913,22 +1028,22 @@ local Components = {}; do
 
 			-- // Update Visuals // --
 			if IsAdornment then
-				Highlighter.Color3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color;
-				Highlighter.Transparency = ESPSettings.Transparency
+				SetHighlighterProp(Highlighter, "Color3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color);
+				SetHighlighterProp(Highlighter, "Transparency", ESPSettings.Transparency);
 
 			elseif ESPType == "selectionbox" then
-				Highlighter.Color3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color;
-				Highlighter.LineThickness = ESPSettings.Thickness;
+				SetHighlighterProp(Highlighter, "Color3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color);
+				SetHighlighterProp(Highlighter, "LineThickness", ESPSettings.Thickness);
 
-				Highlighter.SurfaceColor3 = ESPSettings.SurfaceColor;
-				Highlighter.SurfaceTransparency = ESPSettings.Transparency;
+				SetHighlighterProp(Highlighter, "SurfaceColor3", ESPSettings.SurfaceColor);
+				SetHighlighterProp(Highlighter, "SurfaceTransparency", ESPSettings.Transparency);
 
 			else
-				Highlighter.FillColor = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.FillColor;
-				Highlighter.OutlineColor = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.OutlineColor;
+				SetHighlighterProp(Highlighter, "FillColor", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.FillColor);
+				SetHighlighterProp(Highlighter, "OutlineColor", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.OutlineColor);
 
-				Highlighter.FillTransparency = ESPSettings.FillTransparency;
-				Highlighter.OutlineTransparency = ESPSettings.OutlineTransparency;
+				SetHighlighterProp(Highlighter, "FillTransparency", ESPSettings.FillTransparency);
+				SetHighlighterProp(Highlighter, "OutlineTransparency", ESPSettings.OutlineTransparency);
 			end
 		end
 
@@ -1005,6 +1120,7 @@ local Components = {}; do
 		local FromRaw, ToRaw = ESPSettings.Tracer.From, ESPSettings.Tracer.To
 		local DefaultPoint = UDim2.fromOffset(0, 0)
 		local TracerData = {}
+		local SetTracerProp = CreateDirtyState()
 		
 		-- // Functions // --
 		local function SetVisible(Visible: boolean)
@@ -1026,7 +1142,7 @@ local Components = {}; do
 			if not TracerPath then return end
 			
 			TracerPath:SetControlPoints({});
-			TracerPath:Destroy();
+			QueueDestroy(TracerPath);
 			TracerPath = nil;
 		end;
 
@@ -1071,11 +1187,11 @@ local Components = {}; do
 			end
 
 			-- // Visuals // --
-			TracerPath.Thickness = ESPSettings.Tracer.Thickness;
-			TracerPath.Color3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Tracer.Color;
+			SetTracerProp(TracerPath, "Thickness", ESPSettings.Tracer.Thickness);
+			SetTracerProp(TracerPath, "Color3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Tracer.Color);
 			
 			if CoreGuiAllowed then
-				TracerPath.Transparency = ESPSettings.Tracer.Transparency;
+				SetTracerProp(TracerPath, "Transparency", ESPSettings.Tracer.Transparency);
 			end;
 		end;
 
@@ -1150,11 +1266,13 @@ local Components = {}; do
 		});
 
 		-- // Arrow Data // --
+		local SetArrowProp = CreateDirtyState()
+
 		local ArrowData = { }
 		ArrowData.Destroy = function(self)
 			if not Arrow then return end
 			
-			Arrow:Destroy();
+			QueueDestroy(Arrow);
 			Arrow = nil;
 		end;
 
@@ -1197,7 +1315,7 @@ local Components = {}; do
 			);
 
 			-- // Update Visuals // --
-			Arrow.ImageColor3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Arrow.Color;
+			SetArrowProp(Arrow, "ImageColor3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Arrow.Color);
 		end;
 
 		return setmetatable({}, {
@@ -1272,11 +1390,14 @@ local Components = {}; do
 		})
 
 		-- // Box2D Data // --
+		local SetFrameProp = CreateDirtyState()
+		local SetUIStrokeProp = CreateDirtyState()
+
 		local Box2DData = {}
 		Box2DData.Destroy = function(self)
 			if not Frame then return end
 			
-			Frame:Destroy();
+			QueueDestroy(Frame);
 			Frame = nil;
 		end;
 
@@ -1306,12 +1427,12 @@ local Components = {}; do
 			Frame.Visible = true
 			
 			-- // Update Visuals // --
-			Frame.BackgroundColor3 = ESPSettings.Box2D.Color;
-			UIStroke.Color = ESPSettings.Box2D.Color;
+			SetFrameProp(Frame, "BackgroundColor3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Box2D.Color);
+			SetUIStrokeProp(UIStroke, "Color", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Box2D.Color);
 
-			UIStroke.Thickness = ESPSettings.Box2D.Thickness;
-			UIStroke.Transparency = ESPSettings.Box2D.Transparency;
-			Frame.BackgroundTransparency = if ESPSettings.Box2D.Filled then 0.5 else 1;
+			SetUIStrokeProp(UIStroke, "Thickness", ESPSettings.Box2D.Thickness);
+			SetUIStrokeProp(UIStroke, "Transparency", ESPSettings.Box2D.Transparency);
+			SetFrameProp(Frame, "BackgroundTransparency", if ESPSettings.Box2D.Filled then 0.5 else 1);
 		end;
 
 		return setmetatable({}, {
@@ -1376,6 +1497,7 @@ local Components = {}; do
 		
 		-- // Functions // --
 		local Box3DData = {}
+		local SetBoxPathProp = CreateDirtyState()
 
 		local function SetVisible(Visible: boolean)
 			if not BoxPath then return end
@@ -1393,7 +1515,7 @@ local Components = {}; do
 			if not BoxPath then return end
 			
 			BoxPath:SetControlPoints({});
-			BoxPath:Destroy();
+			QueueDestroy(BoxPath);
 			BoxPath = nil;
 		end;
 
@@ -1421,11 +1543,11 @@ local Components = {}; do
 			
 			-- // Update Visuals // --
 			SetVisible(true);
-			BoxPath.Color3 = ESPSettings.Box3D.Color;
-			BoxPath.Thickness = ESPSettings.Box3D.Thickness;
+			SetBoxPathProp(BoxPath, "Color3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Box3D.Color);
+			SetBoxPathProp(BoxPath, "Thickness", ESPSettings.Box3D.Thickness);
 			
 			if CoreGuiAllowed then
-				BoxPath.Transparency = ESPSettings.Box3D.Transparency;
+				SetBoxPathProp(BoxPath, "Transparency", ESPSettings.Box3D.Transparency);
 			end;
 
 			-- 1-2-4-3-1 (Right Face) | 5-6-8-7-5 (Left Face)
@@ -1594,6 +1716,7 @@ local Components = {}; do
 		-- // Skeleton Data // --
 		local SkeletonData = {}
 		local CachedParts = {}
+		local SetSkeletonPathProp = CreateDirtyState()
 
 		local function SetVisible(visible: boolean)
 			if not SkeletonPath then return end
@@ -1607,7 +1730,7 @@ local Components = {}; do
 			if not SkeletonPath then return end
 			
 			SkeletonPath:SetControlPoints({});
-			SkeletonPath:Destroy();
+			QueueDestroy(SkeletonPath);
 
 			SkeletonPath = nil;
 			Sequence = nil;
@@ -1661,11 +1784,11 @@ local Components = {}; do
 
 			-- // Update Visuals // --
 			SetVisible(true);
-			SkeletonPath.Color3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Skeleton.Color;
-			SkeletonPath.Thickness = ESPSettings.Skeleton.Thickness;
+			SetSkeletonPathProp(SkeletonPath, "Color3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Skeleton.Color);
+			SetSkeletonPathProp(SkeletonPath, "Thickness", ESPSettings.Skeleton.Thickness);
 			
 			if CoreGuiAllowed then
-				SkeletonPath.Transparency = ESPSettings.Skeleton.Transparency;
+				SetSkeletonPathProp(SkeletonPath, "Transparency", ESPSettings.Skeleton.Transparency);
 			end;
 
 			-- // Update Points // --
@@ -1971,6 +2094,9 @@ function Library:Add(espSettings: ESPSettings)
 	debug_print("ESP created.", ESP.Index, "-", ESP.CurrentSettings.Name)
 	return ESP
 end
+
+-- // Cleanup Queue Handler // --
+table.insert(Library.Connections, RunService.RenderStepped:Connect(DrainCleanupQueue))
 
 -- // Update Player Variables // --
 table.insert(Library.Connections, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function() Camera = workspace.CurrentCamera; end))
