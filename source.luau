@@ -204,6 +204,9 @@ local DefaultSettings: ESPSettings = {
 	AfterUpdate = nil,
 }
 
+-- // Static Variables // --
+local BOX3D_POINT_INDICES = {1, 2, 4, 3, 1, 5, 6, 8, 7, 5, 6, 2, 4, 8, 7, 3}
+
 -- // Executor Variables // --
 local cloneref = getgenv().cloneref or function(inst) return inst; end
 
@@ -529,7 +532,10 @@ local RootPart: Part?;
 local Camera: Camera = workspace.CurrentCamera;
 
 local function WorldToViewport(...)
-	Camera = (Camera or workspace.CurrentCamera);
+	if Camera == nil then
+		Camera = workspace.CurrentCamera;
+	end
+
 	if Camera == nil then
 		return Vector2.new(0, 0), false;
 	end
@@ -720,7 +726,7 @@ local Components = {}; do
 			if not ESP._LastScreenPos then return end
 
 			local ESPSettings = ESP.CurrentSettings
-			local _screenPos, isOnScreen = unpack(ESP._LastScreenPos)
+			local isOnScreen = ESP._LastScreenPos[2]
 			local DistanceFromPlayer = ESP._LastDistance or 0
 			local BillboardEnabled = isOnScreen == true and (Library.GlobalConfig.Billboards == true);
 			
@@ -927,7 +933,7 @@ local Components = {}; do
 			if not ESP._LastScreenPos then return end
 
 			local ESPSettings = ESP.CurrentSettings
-			local _screenPos, isOnScreen = unpack(ESP._LastScreenPos)
+			local isOnScreen = ESP._LastScreenPos[2]
 			local HighlightEnabled = isOnScreen == true and (Library.GlobalConfig.Highlighters == true)
 
 			SetVisible(HighlightEnabled);
@@ -1061,7 +1067,7 @@ local Components = {}; do
 			if not ESP._LastScreenPos then return end
 
 			local ESPSettings = ESP.CurrentSettings;
-			local screenPos, isOnScreen = unpack(ESP._LastScreenPos);
+			local screenPos, isOnScreen = ESP._LastScreenPos[1], ESP._LastScreenPos[2];
 			local TracerEnabled = isOnScreen == true and (Library.GlobalConfig.Tracers == true and ESPSettings.Tracer.Enabled == true);
 
 			SetVisible(TracerEnabled);
@@ -1191,7 +1197,7 @@ local Components = {}; do
 			if not ESP._LastScreenPos then return end
 
 			local ESPSettings = ESP.CurrentSettings;
-			local screenPos, isOnScreen = unpack(ESP._LastScreenPos);
+			local screenPos, isOnScreen = ESP._LastScreenPos[1], ESP._LastScreenPos[2];
 			local ArrowEnabled = isOnScreen == false and (Library.GlobalConfig.Arrows == true and ESPSettings.Arrow.Enabled == true);
 			
 			Arrow.Visible = ArrowEnabled;
@@ -1316,22 +1322,21 @@ local Components = {}; do
 			if not ESP._LastScreenPos then return end
 
 			local ESPSettings = ESP.CurrentSettings;
-			local _, isOnScreen = unpack(ESP._LastScreenPos);
+			local isOnScreen = ESP._LastScreenPos[2];
 			local Box2DEnabled = isOnScreen == true and (Library.GlobalConfig.Boxes2D == true and ESPSettings.Box2D.Enabled == true);
 
 			Frame.Visible = Box2DEnabled
 			if not Box2DEnabled then return end
 
 			-- // Corners // --
-			local isCornerOnScreen, _corners, _screenCorners, minX, minY, maxX, maxY = GetModelCorners(ESPSettings.Model);
-			if not isCornerOnScreen then
+			if not ESP._CornerOnScreen then
 				Frame.Visible = false
 				return
 			end
 
 			-- // Update Position // --
-			Frame.Position = UDim2.fromOffset(minX, minY)
-			Frame.Size = UDim2.fromOffset(maxX - minX, maxY - minY)
+			Frame.Position = UDim2.fromOffset(ESP._MinX, ESP._MinY)
+			Frame.Size = UDim2.fromOffset(ESP._MaxX - ESP._MinX, ESP._MaxY - ESP._MinY)
 			Frame.Visible = true
 			
 			-- // Update Visuals // --
@@ -1406,6 +1411,7 @@ local Components = {}; do
 		-- // Functions // --
 		local SetBoxPathProp = CreatePropertySetter()
 		local Box3DData = {}
+		local ControlPoints = table.create(16)
 
 		local function SetVisible(Visible: boolean)
 			if not BoxPath then return end
@@ -1434,7 +1440,7 @@ local Components = {}; do
 			if not ESP._LastScreenPos then return end
 			
 			local ESPSettings = ESP.CurrentSettings;
-			local _, isOnScreen = unpack(ESP._LastScreenPos);
+			local isOnScreen = ESP._LastScreenPos[2];
 			local Box3DEnabled = isOnScreen == true and (Library.GlobalConfig.Boxes3D == true and ESPSettings.Box3D.Enabled == true);
 			
 			if not Box3DEnabled then
@@ -1443,8 +1449,8 @@ local Components = {}; do
 			end
 
 			-- // Path // --
-			local _isCornerOnScreen, _corners, screenCorners, _minX, _minY, _maxX, _maxY = GetModelCorners(ESPSettings.Model);
-			if not (screenCorners and screenCorners[1]) then
+			local screenCorners = ESP._ScreenCorners
+			if not (ESP._CornerOnScreen and screenCorners and screenCorners[1]) then
 				SetVisible(false);
 				return
 			end
@@ -1461,10 +1467,7 @@ local Components = {}; do
 			-- 1-2-4-3-1 (Right Face) | 5-6-8-7-5 (Left Face)
 			-- Connect: 1-5, 2-6, 4-8, 3-7
 			-- Path: 1-2-4-3-1-5-6-8-7-5-6-2-4-8-7-3
-			local PointIndices = {1, 2, 4, 3, 1, 5, 6, 8, 7, 5, 6, 2, 4, 8, 7, 3}
-			local ControlPoints = table.create(16)
-			
-			for idx, Index in PointIndices do
+			for idx, Index in BOX3D_POINT_INDICES do
 				local Point = screenCorners[Index]
 				ControlPoints[idx] = Path2DControlPoint.new(
 					UDim2.fromOffset(Point.X, Point.Y)
@@ -1651,7 +1654,7 @@ local Components = {}; do
 			if not ESP._LastScreenPos then return end
 			
 			local ESPSettings = ESP.CurrentSettings;
-			local _, isOnScreen = unpack(ESP._LastScreenPos);
+			local isOnScreen = ESP._LastScreenPos[2];
 			local SkeletonEnabled = isOnScreen == true and (Library.GlobalConfig.Skeleton == true and ESPSettings.Skeleton.Enabled == true);
 			
 			if not SkeletonEnabled then
@@ -1970,6 +1973,22 @@ function Library:Add(espSettings: ESPSettings)
 		-- // Get Screen Information // --
 		local screenPos, isOnScreen = WorldToViewport(GetPivot(ModelRoot).Position)
 		ESP._LastScreenPos = { screenPos, isOnScreen }
+
+		-- // Model corners // --
+		local calculateCorners = isOnScreen == true and (
+			(ESP.Components.Box2D ~= nil and Library.GlobalConfig.Boxes2D == true and ESPSettings.Box2D.Enabled == true) or
+			(ESP.Components.Box3D ~= nil and Library.GlobalConfig.Boxes3D == true and ESPSettings.Box3D.Enabled == true)
+		)
+
+		if calculateCorners then
+			local cornerOnScreen, _worldCorners, screenCorners, minX, minY, maxX, maxY = GetModelCorners(ESPSettings.Model)
+			ESP._CornerOnScreen = cornerOnScreen
+			ESP._ScreenCorners = screenCorners
+			ESP._MinX, ESP._MinY, ESP._MaxX, ESP._MaxY = minX, minY, maxX, maxY
+		else
+			ESP._CornerOnScreen = false
+			ESP._ScreenCorners = nil
+		end
 
 		-- // Before Update Callback // --
 		if ESPSettings.BeforeUpdate then
