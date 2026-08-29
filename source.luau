@@ -10,7 +10,7 @@
 		███   ███   ███          ███        ███    █▄           ███   ███
 		███   ███   ███    ▄█    ███        ███    ███    ▄█    ███   ███
 		▀█   ███   █▀   ▄████████▀         ██████████  ▄████████▀   ▄████▀
-								   v2.1.3
+								   v2.1.4
 
 						Created by mstudio45 (Discord)
 				Contributors: Dottik, Master Oogway, deividcomsono
@@ -19,7 +19,7 @@
 
 local getgenv = getgenv or function() return shared end
 
-local VERSION = "2.1.3";
+local VERSION = "2.1.4";
 local DEBUG_ENABLED = getgenv().mstudio45_ESP_DEBUG == true;
 
 local debug_print = if DEBUG_ENABLED then (function(...) print("[mstudio45's ESP]", ...) end) else (function() end);
@@ -278,52 +278,6 @@ local function SafeCallback(Func: (...any) -> ...any, ...: any)
 	end
 
 	return table.unpack(Result, 2, Result.n)
-end
-
--- // Dirty State Helper // --
-local function CreateDirtyState()
-	local Cache = {}
-
-	return function(Instance: Instance, Property: string, Value: any): boolean
-		if Cache[Property] == Value then
-			return false
-		end
-
-		Cache[Property] = Value;
-		(Instance :: any)[Property] = Value
-
-		return true
-	end
-end
-
--- // Batched Cleanup Queue // --
-local CLEANUP_PER_FRAME = 20
-
-local CleanupQueue = {}
-local CleanupQueueSize = 0
-
-local function QueueDestroy(Object: (Instance | { Destroy: (any) -> () })?)
-	if not Object then return end
-
-	CleanupQueueSize += 1
-	CleanupQueue[CleanupQueueSize] = Object
-end
-
-local function DrainCleanupQueue()
-	if CleanupQueueSize == 0 then return end
-
-	for _ = 1, math.min(CLEANUP_PER_FRAME, CleanupQueueSize) do
-		local Object = CleanupQueue[CleanupQueueSize]
-		CleanupQueue[CleanupQueueSize] = nil
-		CleanupQueueSize -= 1
-
-		if not Object then continue end
-
-		local success, err = pcall(Object.Destroy, Object)
-		if not success then
-			debug_warn("Error destroying queued object:\n", err)
-		end
-	end
 end
 
 local Validate; Validate = function(Table: { [string]: any }, Template: { [string]: any }): { [string]: any }
@@ -613,86 +567,39 @@ local AllowedESPType = {
 	highlight = true,
 }
 
--- // Bounding Box Cache // --
-local BOUNDING_BOX_REFRESH_INTERVAL = 1 -- // Seconds; set to 0 to rely purely on descendant-change invalidation. // --
-
-local BoundingBoxCache = setmetatable({}, { __mode = "k" }) :: { [Instance]: {
-	Size: Vector3?,
-	Offset: CFrame?,
-	Dirty: boolean,
-	LastRefresh: number,
-	Connections: { RBXScriptConnection },
-} }
-
-local function InvalidateBoundingBoxCache(Model: Instance)
-	local Cache = BoundingBoxCache[Model]
-	if Cache then
-		Cache.Dirty = true
-	end
-end
-
-local function GetCachedBoundingBox(Model: Model): (CFrame?, Vector3?)
-	local Cache = BoundingBoxCache[Model]
-
-	if not Cache then
-		Cache = {
-			Dirty = true,
-			LastRefresh = 0,
-			Connections = {},
-		} :: any
-
-		BoundingBoxCache[Model] = Cache
-
-		-- // Only recalculate the bounding box when the model's descendants change // --
-		table.insert(Cache.Connections, Model.DescendantAdded:Connect(function()
-			InvalidateBoundingBoxCache(Model)
-		end))
-		table.insert(Cache.Connections, Model.DescendantRemoving:Connect(function()
-			InvalidateBoundingBoxCache(Model)
-		end))
-	end
-
-	local IsStale = Cache.Dirty
-		or (BOUNDING_BOX_REFRESH_INTERVAL > 0 and (os.clock() - Cache.LastRefresh) >= BOUNDING_BOX_REFRESH_INTERVAL)
-
-	if IsStale then
-		local Success, BBCFrame, BBSize = pcall(Model.GetBoundingBox, Model)
-
-		if Success then
-			local Pivot = Model:GetPivot()
-
-			Cache.Size = BBSize
-			Cache.Offset = Pivot:ToObjectSpace(BBCFrame)
-			Cache.Dirty = false
-			Cache.LastRefresh = os.clock()
-		else
-			debug_warn("Failed to calculate bounding box for", Model:GetFullName(), "-", BBCFrame)
-		end
-	end
-
-	if not (Cache.Size and Cache.Offset) then
-		return nil, nil
-	end
-
-	return Model:GetPivot() * Cache.Offset, Cache.Size
-end
-
 -- // Helper Functions // --
+local function CreatePropertySetter()
+	local Cache = {}
+
+	return function(Instance: Instance, Property: string, Value: any): boolean
+		if Cache[Property] == Value then
+			return false
+		end
+
+		Cache[Property] = Value;
+		(Instance :: any)[Property] = Value
+
+		return true
+	end
+end
+
 local function GetModelCorners(Model: Instance?)
 	if not Model then
 		return false, {}, {}, 0, 0, 0, 0;
 	end
 
 	-- // Calculate Bounding Box // --
-	local ModelCFrame, ModelSize = nil, nil
+	local _Success, ModelCFrame, ModelSize = false, nil, nil
 
 	if Model:IsA("Model") then
-		ModelCFrame, ModelSize = GetCachedBoundingBox(Model)
-	else
+		_Success, ModelCFrame, ModelSize = pcall(Model.GetBoundingBox, Model)
+	end
+
+	if not (ModelCFrame and ModelSize) then
 		if not InstancesLib.TryGetProperty(Model, "Size") then
 			local PrimaryPart = InstancesLib.FindPrimaryPart(Model)
 
-			if InstancesLib.TryGetProperty(PrimaryPart, "Size") then
+			if PrimaryPart and InstancesLib.TryGetProperty(PrimaryPart, "Size") then
 				ModelCFrame = PrimaryPart.CFrame
 				ModelSize = PrimaryPart.Size
 			end
@@ -795,14 +702,14 @@ local Components = {}; do
 		})
 
 		-- // Billboard Data // --
-		local SetBillboardProp = CreateDirtyState()
-		local SetBillboardTextProp = CreateDirtyState()
-
+		local SetBillboardProp = CreatePropertySetter()
+		local SetBillboardTextProp = CreatePropertySetter()
 		local BillboardData = {}
+	
 		BillboardData.Destroy = function(self)
 			if not Billboard then return end
 			
-			QueueDestroy(Billboard);
+			Billboard:Destroy();
 			Billboard = nil;
 		end;
 
@@ -993,6 +900,9 @@ local Components = {}; do
 		end
 
 		-- // Highlighter Data // --
+		local SetHighlighterProp = CreatePropertySetter()
+		local HighlighterData = {}
+
 		local function SetVisible(visible: boolean)
 			if not Highlighter then return end
 
@@ -1003,13 +913,10 @@ local Components = {}; do
 			Highlighter.Adornee = if visible then ESP.CurrentSettings.Model else nil;
 		end
 
-		local SetHighlighterProp = CreateDirtyState()
-
-		local HighlighterData = {}
 		HighlighterData.Destroy = function(self)
 			if not Highlighter then return end
 
-			QueueDestroy(Highlighter);
+			Highlighter:Destroy();
 			Highlighter = nil;
 		end
 
@@ -1116,12 +1023,13 @@ local Components = {}; do
 			Transparency = ESPSettings.Tracer.Transparency
 		})
 
-		-- // Tracer Data // --
+		-- // Tracer Data // --		
+		local SetTracerProp = CreatePropertySetter()
+		local TracerData = {}
+
 		local FromRaw, ToRaw = ESPSettings.Tracer.From, ESPSettings.Tracer.To
 		local DefaultPoint = UDim2.fromOffset(0, 0)
-		local TracerData = {}
-		local SetTracerProp = CreateDirtyState()
-		
+
 		-- // Functions // --
 		local function SetVisible(Visible: boolean)
 			if not TracerPath then return end
@@ -1142,7 +1050,7 @@ local Components = {}; do
 			if not TracerPath then return end
 			
 			TracerPath:SetControlPoints({});
-			QueueDestroy(TracerPath);
+			TracerPath:Destroy();
 			TracerPath = nil;
 		end;
 
@@ -1266,13 +1174,13 @@ local Components = {}; do
 		});
 
 		-- // Arrow Data // --
-		local SetArrowProp = CreateDirtyState()
+		local SetArrowProp = CreatePropertySetter()
+		local ArrowData = {}
 
-		local ArrowData = { }
 		ArrowData.Destroy = function(self)
 			if not Arrow then return end
 			
-			QueueDestroy(Arrow);
+			Arrow:Destroy();
 			Arrow = nil;
 		end;
 
@@ -1390,14 +1298,14 @@ local Components = {}; do
 		})
 
 		-- // Box2D Data // --
-		local SetFrameProp = CreateDirtyState()
-		local SetUIStrokeProp = CreateDirtyState()
-
+		local SetFrameProp = CreatePropertySetter()
+		local SetUIStrokeProp = CreatePropertySetter()
 		local Box2DData = {}
+
 		Box2DData.Destroy = function(self)
 			if not Frame then return end
 			
-			QueueDestroy(Frame);
+			Frame:Destroy();
 			Frame = nil;
 		end;
 
@@ -1496,8 +1404,8 @@ local Components = {}; do
 		})
 		
 		-- // Functions // --
+		local SetBoxPathProp = CreatePropertySetter()
 		local Box3DData = {}
-		local SetBoxPathProp = CreateDirtyState()
 
 		local function SetVisible(Visible: boolean)
 			if not BoxPath then return end
@@ -1515,7 +1423,7 @@ local Components = {}; do
 			if not BoxPath then return end
 			
 			BoxPath:SetControlPoints({});
-			QueueDestroy(BoxPath);
+			BoxPath:Destroy();
 			BoxPath = nil;
 		end;
 
@@ -1714,9 +1622,9 @@ local Components = {}; do
 		})
 
 		-- // Skeleton Data // --
+		local SetSkeletonPathProp = CreatePropertySetter()
 		local SkeletonData = {}
 		local CachedParts = {}
-		local SetSkeletonPathProp = CreateDirtyState()
 
 		local function SetVisible(visible: boolean)
 			if not SkeletonPath then return end
@@ -1730,7 +1638,7 @@ local Components = {}; do
 			if not SkeletonPath then return end
 			
 			SkeletonPath:SetControlPoints({});
-			QueueDestroy(SkeletonPath);
+			SkeletonPath:Destroy();
 
 			SkeletonPath = nil;
 			Sequence = nil;
@@ -2094,9 +2002,6 @@ function Library:Add(espSettings: ESPSettings)
 	debug_print("ESP created.", ESP.Index, "-", ESP.CurrentSettings.Name)
 	return ESP
 end
-
--- // Cleanup Queue Handler // --
-table.insert(Library.Connections, RunService.RenderStepped:Connect(DrainCleanupQueue))
 
 -- // Update Player Variables // --
 table.insert(Library.Connections, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function() Camera = workspace.CurrentCamera; end))
