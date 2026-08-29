@@ -10,7 +10,7 @@
 		███   ███   ███          ███        ███    █▄           ███   ███
 		███   ███   ███    ▄█    ███        ███    ███    ▄█    ███   ███
 		▀█   ███   █▀   ▄████████▀         ██████████  ▄████████▀   ▄████▀
-								   v2.1.3
+								   v2.1.4
 
 						Created by mstudio45 (Discord)
 				Contributors: Dottik, Master Oogway, deividcomsono
@@ -19,7 +19,7 @@
 
 local getgenv = getgenv or function() return shared end
 
-local VERSION = "2.1.3";
+local VERSION = "2.1.4";
 local DEBUG_ENABLED = getgenv().mstudio45_ESP_DEBUG == true;
 
 local debug_print = if DEBUG_ENABLED then (function(...) print("[mstudio45's ESP]", ...) end) else (function() end);
@@ -216,6 +216,9 @@ local DefaultSettings: ESPSettings = {
 	BeforeUpdate = nil,
 	AfterUpdate = nil,
 }
+
+-- // Static Variables // --
+local BOX3D_POINT_INDICES = {1, 2, 4, 3, 1, 5, 6, 8, 7, 5, 6, 2, 4, 8, 7, 3}
 
 -- // Executor Variables // --
 local cloneref = getgenv().cloneref or function(inst) return inst; end
@@ -542,7 +545,10 @@ local RootPart: Part?;
 local Camera: Camera = workspace.CurrentCamera;
 
 local function WorldToViewport(...)
-	Camera = (Camera or workspace.CurrentCamera);
+	if Camera == nil then
+		Camera = workspace.CurrentCamera;
+	end
+
 	if Camera == nil then
 		return Vector2.new(0, 0), false;
 	end
@@ -676,6 +682,40 @@ local function ComputeRawBoundingBox(Model: Instance?, BoundingMode: string?, Ch
 			local Anchor = ResolveBoundingAnchorPart(Model, "PrimaryPart")
 			if Anchor then
 				return Anchor.CFrame, Anchor.Size
+local function CreatePropertySetter()
+	local Cache = {}
+
+	return function(Instance: Instance, Property: string, Value: any): boolean
+		if Cache[Property] == Value then
+			return false
+		end
+
+		Cache[Property] = Value;
+		(Instance :: any)[Property] = Value
+
+		return true
+	end
+end
+
+local function GetModelCorners(Model: Instance?)
+	if not Model then
+		return false, {}, {}, 0, 0, 0, 0;
+	end
+
+	-- // Calculate Bounding Box // --
+	local _Success, ModelCFrame, ModelSize = false, nil, nil
+
+	if Model:IsA("Model") then
+		_Success, ModelCFrame, ModelSize = pcall(Model.GetBoundingBox, Model)
+	end
+
+	if not (ModelCFrame and ModelSize) then
+		if not InstancesLib.TryGetProperty(Model, "Size") then
+			local PrimaryPart = InstancesLib.FindPrimaryPart(Model)
+
+			if PrimaryPart and InstancesLib.TryGetProperty(PrimaryPart, "Size") then
+				ModelCFrame = PrimaryPart.CFrame
+				ModelSize = PrimaryPart.Size
 			end
 			return nil, nil
 
@@ -842,7 +882,10 @@ local Components = {}; do
 		})
 
 		-- // Billboard Data // --
+		local SetBillboardProp = CreatePropertySetter()
+		local SetBillboardTextProp = CreatePropertySetter()
 		local BillboardData = {}
+	
 		BillboardData.Destroy = function(self)
 			if not Billboard then return end
 			
@@ -857,28 +900,28 @@ local Components = {}; do
 			if not ESP._LastScreenPos then return end
 
 			local ESPSettings = ESP.CurrentSettings
-			local _screenPos, isOnScreen = unpack(ESP._LastScreenPos)
+			local isOnScreen = ESP._LastScreenPos[2]
 			local DistanceFromPlayer = ESP._LastDistance or 0
 			local BillboardEnabled = isOnScreen == true and (Library.GlobalConfig.Billboards == true);
 			
-			Billboard.Enabled = BillboardEnabled;
+			SetBillboardProp(Billboard, "Enabled", BillboardEnabled);
 			if not BillboardEnabled then return end
 
 			-- // Update Visuals // --
 			if Library.GlobalConfig.Distance then
-				BillboardText.Text = string.format(
+				SetBillboardTextProp(BillboardText, "Text", string.format(
 					'%s\n<font size="%d">[%s]</font>',
 					ESPSettings.Name,
 					ESPSettings.TextSize - 3,
 					math.floor(DistanceFromPlayer)
-				);
+				));
 			else
-				BillboardText.Text = ESPSettings.Name;
+				SetBillboardTextProp(BillboardText, "Text", ESPSettings.Name);
 			end
 
-			BillboardText.Font = Library.GlobalConfig.Font;
-			BillboardText.TextColor3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color;
-			BillboardText.TextSize = ESPSettings.TextSize;
+			SetBillboardTextProp(BillboardText, "Font", Library.GlobalConfig.Font);
+			SetBillboardTextProp(BillboardText, "TextColor3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color);
+			SetBillboardTextProp(BillboardText, "TextSize", ESPSettings.TextSize);
 		end;
 
 		return setmetatable({}, {
@@ -1122,6 +1165,9 @@ local Components = {}; do
 		end
 
 		-- // Highlighter Data // --
+		local SetHighlighterProp = CreatePropertySetter()
+		local HighlighterData = {}
+
 		local function SetVisible(visible: boolean)
 			if IsCharacterHighlightMode() then
 				SyncCharacterHighlights(visible)
@@ -1138,7 +1184,6 @@ local Components = {}; do
 			Highlighter.Adornee = if visible then GetDesiredAdornee() else nil
 		end
 
-		local HighlighterData = {}
 		HighlighterData.Destroy = function(self)
 			DestroyCharacterHighlights()
 
@@ -1154,7 +1199,7 @@ local Components = {}; do
 			if not ESP._LastScreenPos then return end
 
 			local ESPSettings = ESP.CurrentSettings
-			local _screenPos, isOnScreen = unpack(ESP._LastScreenPos)
+			local isOnScreen = ESP._LastScreenPos[2]
 			local HighlightEnabled = isOnScreen == true and (Library.GlobalConfig.Highlighters == true)
 
 			SetVisible(HighlightEnabled)
@@ -1181,8 +1226,8 @@ local Components = {}; do
 			end
 
 			if IsAdornment then
-				Highlighter.Color3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color
-				Highlighter.Transparency = ESPSettings.Transparency
+				SetHighlighterProp(Highlighter, "Color3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color);
+				SetHighlighterProp(Highlighter, "Transparency", ESPSettings.Transparency);
 
 				local BoundingCache = ESP._BoundingCache
 				local CacheSize = BoundingCache and BoundingCache.Size
@@ -1197,15 +1242,18 @@ local Components = {}; do
 					end
 				end
 			elseif ESPType == "selectionbox" then
-				Highlighter.Color3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color
-				Highlighter.LineThickness = ESPSettings.Thickness
-				Highlighter.SurfaceColor3 = ESPSettings.SurfaceColor
-				Highlighter.SurfaceTransparency = ESPSettings.Transparency
+				SetHighlighterProp(Highlighter, "Color3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color);
+				SetHighlighterProp(Highlighter, "LineThickness", ESPSettings.Thickness);
+
+				SetHighlighterProp(Highlighter, "SurfaceColor3", ESPSettings.SurfaceColor);
+				SetHighlighterProp(Highlighter, "SurfaceTransparency", ESPSettings.Transparency);
+
 			else
-				Highlighter.FillColor = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.FillColor
-				Highlighter.OutlineColor = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.OutlineColor
-				Highlighter.FillTransparency = ESPSettings.FillTransparency
-				Highlighter.OutlineTransparency = ESPSettings.OutlineTransparency
+				SetHighlighterProp(Highlighter, "FillColor", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.FillColor);
+				SetHighlighterProp(Highlighter, "OutlineColor", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.OutlineColor);
+
+				SetHighlighterProp(Highlighter, "FillTransparency", ESPSettings.FillTransparency);
+				SetHighlighterProp(Highlighter, "OutlineTransparency", ESPSettings.OutlineTransparency);
 			end
 		end
 
@@ -1283,11 +1331,13 @@ local Components = {}; do
 			Transparency = ESPSettings.Tracer.Transparency
 		})
 
-		-- // Tracer Data // --
+		-- // Tracer Data // --		
+		local SetTracerProp = CreatePropertySetter()
+		local TracerData = {}
+
 		local FromRaw, ToRaw = ESPSettings.Tracer.From, ESPSettings.Tracer.To
 		local DefaultPoint = UDim2.fromOffset(0, 0)
-		local TracerData = {}
-		
+
 		-- // Functions // --
 		local function SetVisible(Visible: boolean)
 			if not TracerPath then return end
@@ -1319,7 +1369,7 @@ local Components = {}; do
 			if not ESP._LastScreenPos then return end
 
 			local ESPSettings = ESP.CurrentSettings;
-			local screenPos, isOnScreen = unpack(ESP._LastScreenPos);
+			local screenPos, isOnScreen = ESP._LastScreenPos[1], ESP._LastScreenPos[2];
 			local TracerEnabled = isOnScreen == true and (Library.GlobalConfig.Tracers == true and ESPSettings.Tracer.Enabled == true);
 
 			SetVisible(TracerEnabled);
@@ -1353,11 +1403,11 @@ local Components = {}; do
 			end
 
 			-- // Visuals // --
-			TracerPath.Thickness = ESPSettings.Tracer.Thickness;
-			TracerPath.Color3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Tracer.Color;
+			SetTracerProp(TracerPath, "Thickness", ESPSettings.Tracer.Thickness);
+			SetTracerProp(TracerPath, "Color3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Tracer.Color);
 			
 			if CoreGuiAllowed then
-				TracerPath.Transparency = ESPSettings.Tracer.Transparency;
+				SetTracerProp(TracerPath, "Transparency", ESPSettings.Tracer.Transparency);
 			end;
 		end;
 
@@ -1432,7 +1482,9 @@ local Components = {}; do
 		});
 
 		-- // Arrow Data // --
-		local ArrowData = { }
+		local SetArrowProp = CreatePropertySetter()
+		local ArrowData = {}
+
 		ArrowData.Destroy = function(self)
 			if not Arrow then return end
 			
@@ -1447,7 +1499,7 @@ local Components = {}; do
 			if not ESP._LastScreenPos then return end
 
 			local ESPSettings = ESP.CurrentSettings;
-			local screenPos, isOnScreen = unpack(ESP._LastScreenPos);
+			local screenPos, isOnScreen = ESP._LastScreenPos[1], ESP._LastScreenPos[2];
 			local ArrowEnabled = isOnScreen == false and (Library.GlobalConfig.Arrows == true and ESPSettings.Arrow.Enabled == true);
 			
 			Arrow.Visible = ArrowEnabled;
@@ -1479,7 +1531,7 @@ local Components = {}; do
 			);
 
 			-- // Update Visuals // --
-			Arrow.ImageColor3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Arrow.Color;
+			SetArrowProp(Arrow, "ImageColor3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Arrow.Color);
 		end;
 
 		return setmetatable({}, {
@@ -1554,7 +1606,10 @@ local Components = {}; do
 		})
 
 		-- // Box2D Data // --
+		local SetFrameProp = CreatePropertySetter()
+		local SetUIStrokeProp = CreatePropertySetter()
 		local Box2DData = {}
+
 		Box2DData.Destroy = function(self)
 			if not Frame then return end
 			
@@ -1569,35 +1624,30 @@ local Components = {}; do
 			if not ESP._LastScreenPos then return end
 
 			local ESPSettings = ESP.CurrentSettings;
-			local _, isOnScreen = unpack(ESP._LastScreenPos);
+			local isOnScreen = ESP._LastScreenPos[2];
 			local Box2DEnabled = isOnScreen == true and (Library.GlobalConfig.Boxes2D == true and ESPSettings.Box2D.Enabled == true);
 
 			Frame.Visible = Box2DEnabled
 			if not Box2DEnabled then return end
 
 			-- // Corners // --
-			local BoundingCache = ESP._BoundingCache
-			local isCornerOnScreen, _corners, _screenCorners, minX, minY, maxX, maxY = GetModelCorners(
-				BoundingCache and BoundingCache.CFrame,
-				BoundingCache and BoundingCache.Size
-			);
-			if not isCornerOnScreen then
+			if not ESP._CornerOnScreen then
 				Frame.Visible = false
 				return
 			end
 
 			-- // Update Position // --
-			Frame.Position = UDim2.fromOffset(minX, minY)
-			Frame.Size = UDim2.fromOffset(maxX - minX, maxY - minY)
+			Frame.Position = UDim2.fromOffset(ESP._MinX, ESP._MinY)
+			Frame.Size = UDim2.fromOffset(ESP._MaxX - ESP._MinX, ESP._MaxY - ESP._MinY)
 			Frame.Visible = true
 			
 			-- // Update Visuals // --
-			Frame.BackgroundColor3 = ESPSettings.Box2D.Color;
-			UIStroke.Color = ESPSettings.Box2D.Color;
+			SetFrameProp(Frame, "BackgroundColor3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Box2D.Color);
+			SetUIStrokeProp(UIStroke, "Color", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Box2D.Color);
 
-			UIStroke.Thickness = ESPSettings.Box2D.Thickness;
-			UIStroke.Transparency = ESPSettings.Box2D.Transparency;
-			Frame.BackgroundTransparency = if ESPSettings.Box2D.Filled then 0.5 else 1;
+			SetUIStrokeProp(UIStroke, "Thickness", ESPSettings.Box2D.Thickness);
+			SetUIStrokeProp(UIStroke, "Transparency", ESPSettings.Box2D.Transparency);
+			SetFrameProp(Frame, "BackgroundTransparency", if ESPSettings.Box2D.Filled then 0.5 else 1);
 		end;
 
 		return setmetatable({}, {
@@ -1661,7 +1711,9 @@ local Components = {}; do
 		})
 		
 		-- // Functions // --
+		local SetBoxPathProp = CreatePropertySetter()
 		local Box3DData = {}
+		local ControlPoints = table.create(16)
 
 		local function SetVisible(Visible: boolean)
 			if not BoxPath then return end
@@ -1690,7 +1742,7 @@ local Components = {}; do
 			if not ESP._LastScreenPos then return end
 			
 			local ESPSettings = ESP.CurrentSettings;
-			local _, isOnScreen = unpack(ESP._LastScreenPos);
+			local isOnScreen = ESP._LastScreenPos[2];
 			local Box3DEnabled = isOnScreen == true and (Library.GlobalConfig.Boxes3D == true and ESPSettings.Box3D.Enabled == true);
 			
 			if not Box3DEnabled then
@@ -1699,32 +1751,25 @@ local Components = {}; do
 			end
 
 			-- // Path // --
-			local BoundingCache = ESP._BoundingCache
-			local _isCornerOnScreen, _corners, screenCorners, _minX, _minY, _maxX, _maxY = GetModelCorners(
-				BoundingCache and BoundingCache.CFrame,
-				BoundingCache and BoundingCache.Size
-			);
-			if not (screenCorners and screenCorners[1]) then
+			local screenCorners = ESP._ScreenCorners
+			if not (ESP._CornerOnScreen and screenCorners and screenCorners[1]) then
 				SetVisible(false);
 				return
 			end
 			
 			-- // Update Visuals // --
 			SetVisible(true);
-			BoxPath.Color3 = ESPSettings.Box3D.Color;
-			BoxPath.Thickness = ESPSettings.Box3D.Thickness;
+			SetBoxPathProp(BoxPath, "Color3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Box3D.Color);
+			SetBoxPathProp(BoxPath, "Thickness", ESPSettings.Box3D.Thickness);
 			
 			if CoreGuiAllowed then
-				BoxPath.Transparency = ESPSettings.Box3D.Transparency;
+				SetBoxPathProp(BoxPath, "Transparency", ESPSettings.Box3D.Transparency);
 			end;
 
 			-- 1-2-4-3-1 (Right Face) | 5-6-8-7-5 (Left Face)
 			-- Connect: 1-5, 2-6, 4-8, 3-7
 			-- Path: 1-2-4-3-1-5-6-8-7-5-6-2-4-8-7-3
-			local PointIndices = {1, 2, 4, 3, 1, 5, 6, 8, 7, 5, 6, 2, 4, 8, 7, 3}
-			local ControlPoints = table.create(16)
-			
-			for idx, Index in PointIndices do
+			for idx, Index in BOX3D_POINT_INDICES do
 				local Point = screenCorners[Index]
 				ControlPoints[idx] = Path2DControlPoint.new(
 					UDim2.fromOffset(Point.X, Point.Y)
@@ -1882,6 +1927,7 @@ local Components = {}; do
 		})
 
 		-- // Skeleton Data // --
+		local SetSkeletonPathProp = CreatePropertySetter()
 		local SkeletonData = {}
 		local CachedParts = {}
 
@@ -1910,7 +1956,7 @@ local Components = {}; do
 			if not ESP._LastScreenPos then return end
 			
 			local ESPSettings = ESP.CurrentSettings;
-			local _, isOnScreen = unpack(ESP._LastScreenPos);
+			local isOnScreen = ESP._LastScreenPos[2];
 			local SkeletonEnabled = isOnScreen == true and (Library.GlobalConfig.Skeleton == true and ESPSettings.Skeleton.Enabled == true);
 			
 			if not SkeletonEnabled then
@@ -1951,11 +1997,11 @@ local Components = {}; do
 
 			-- // Update Visuals // --
 			SetVisible(true);
-			SkeletonPath.Color3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Skeleton.Color;
-			SkeletonPath.Thickness = ESPSettings.Skeleton.Thickness;
+			SetSkeletonPathProp(SkeletonPath, "Color3", if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Skeleton.Color);
+			SetSkeletonPathProp(SkeletonPath, "Thickness", ESPSettings.Skeleton.Thickness);
 			
 			if CoreGuiAllowed then
-				SkeletonPath.Transparency = ESPSettings.Skeleton.Transparency;
+				SetSkeletonPathProp(SkeletonPath, "Transparency", ESPSettings.Skeleton.Transparency);
 			end;
 
 			-- // Update Points // --
@@ -2256,8 +2302,21 @@ function Library:Add(espSettings: ESPSettings)
 		local screenPos, isOnScreen = WorldToViewport(GetPivot(ModelRoot).Position)
 		ESP._LastScreenPos = { screenPos, isOnScreen }
 
-		-- // Update Bounding Box Cache // --
-		UpdateBoundingBoxCache(ESP, Delta)
+		-- // Model corners // --
+		local calculateCorners = isOnScreen == true and (
+			(ESP.Components.Box2D ~= nil and Library.GlobalConfig.Boxes2D == true and ESPSettings.Box2D.Enabled == true) or
+			(ESP.Components.Box3D ~= nil and Library.GlobalConfig.Boxes3D == true and ESPSettings.Box3D.Enabled == true)
+		)
+
+		if calculateCorners then
+			local cornerOnScreen, _worldCorners, screenCorners, minX, minY, maxX, maxY = GetModelCorners(ESPSettings.Model)
+			ESP._CornerOnScreen = cornerOnScreen
+			ESP._ScreenCorners = screenCorners
+			ESP._MinX, ESP._MinY, ESP._MaxX, ESP._MaxY = minX, minY, maxX, maxY
+		else
+			ESP._CornerOnScreen = false
+			ESP._ScreenCorners = nil
+		end
 
 		-- // Before Update Callback // --
 		if ESPSettings.BeforeUpdate then
