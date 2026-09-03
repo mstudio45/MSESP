@@ -564,6 +564,35 @@ local Character: Model?;
 local RootPart: Part?;
 local Camera: Camera = workspace.CurrentCamera;
 
+local function ClearPlayerVariables()
+	Character = nil
+	RootPart = nil
+end
+
+local function GetPlayerReference()
+	if Library.GlobalConfig.IgnoreCharacter == true then
+		return Camera
+	end
+
+	local Subject = Camera and Camera.CameraSubject
+	if Subject and Subject:IsA("Humanoid") then
+		if Subject.Health <= 0 then
+			return Camera
+		end
+
+		local SubjectCharacter = Subject.Parent
+		if SubjectCharacter and SubjectCharacter ~= Character then
+			return Camera
+		end
+	end
+
+	if RootPart ~= nil and RootPart.Parent ~= nil then
+		return RootPart
+	end
+
+	return Camera
+end
+
 local function WorldToViewport(...)
 	if Camera == nil then
 		Camera = workspace.CurrentCamera;
@@ -2221,11 +2250,8 @@ function Library:Add(espSettings: ESPSettings)
 		if ESP.Deleted == true or not ESPSettings then return end
 		
 		-- // Early exit conditions // --
-		if ESPSettings.Visible == false or not (
-			Camera and (
-				if Library.GlobalConfig.IgnoreCharacter == true then true else RootPart
-			)
-		) then
+		local Reference = GetPlayerReference()
+		if ESPSettings.Visible == false or not (Camera and Reference) then
 			Hide(true)
 			return
 		end
@@ -2236,7 +2262,7 @@ function Library:Add(espSettings: ESPSettings)
 		end
 
 		local ModelRoot = ESPSettings.ModelRoot or ESPSettings.Model
-		local DistanceFromPlayer = InstancesLib.DistanceFrom(ModelRoot, RootPart or Camera)
+		local DistanceFromPlayer = InstancesLib.DistanceFrom(ModelRoot, Reference)
 		ESP._LastDistance = DistanceFromPlayer
 
 		if DistanceFromPlayer > ESPSettings.MaxDistance then
@@ -2300,6 +2326,7 @@ end
 -- // Update Player Variables // --
 table.insert(Library.Connections, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function() Camera = workspace.CurrentCamera; end))
 table.insert(Library.Connections, Players.LocalPlayer.CharacterAdded:Connect(UpdatePlayerVariables))
+table.insert(Library.Connections, Players.LocalPlayer.CharacterRemoving:Connect(ClearPlayerVariables))
 
 -- // Rainbow Handler // --
 table.insert(Library.Connections, RunService.RenderStepped:Connect(function(Delta)
