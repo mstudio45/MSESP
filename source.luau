@@ -131,6 +131,7 @@ export type ESPInstance = {
 	Hide: (self, Force: boolean?) -> nil,
 	ToggleVisibility: (self, Force: boolean?) -> nil,
 	SetEveryColor: (self, Color: Color3, IncludeComponents: boolean) -> nil,
+	IsAlive: (self) -> boolean,
 	Destroy: (self) -> nil
 }
 
@@ -359,6 +360,37 @@ local InstancesLib = {
 		local position     = if typeof(inst) == "Instance" then GetPivot(inst).Position else inst;
 		local fromPosition = if typeof(from) == "Instance" then GetPivot(from).Position else from;
 		return (fromPosition - position).Magnitude;
+	end,
+
+	-- // IsAlive // --
+	IsAlive = function(instance, requireHead: boolean?)
+		if typeof(instance) ~= "Instance" or instance.Parent == nil then
+			return false
+		end
+
+		local Humanoid = instance:FindFirstChildOfClass("Humanoid")
+		if not Humanoid or Humanoid.Parent == nil then
+			return true
+		end
+
+		-- // Standard death checks // --
+		if Humanoid.Health <= 0 then
+			return false
+		end
+
+		if Humanoid:GetState() == Enum.HumanoidStateType.Dead then
+			return false
+		end
+
+		if Humanoid.RootPart == nil then
+			return false
+		end
+
+		if requireHead == true and not instance:FindFirstChild("Head") then
+			return false
+		end
+
+		return true
 	end
 }
 
@@ -470,6 +502,13 @@ local Library = {
 		Boxes3D = true,
 		Skeleton = true,
 
+		-- // Alive Check // --
+		AliveCheck = true,
+		RequireHead = true,
+
+		-- // Wall Check // --
+		WallCheck = false,
+
 		Font = Enum.Font.RobotoCondensed
 	},
 
@@ -572,6 +611,113 @@ local function WorldToViewport(...)
 	return Camera:WorldToViewportPoint(...);
 end
 
+local WallCheckParams = RaycastParams.new()
+WallCheckParams.FilterType = Enum.RaycastFilterType.Exclude
+WallCheckParams.IgnoreWater = true
+
+local WallCheckIgnoreList = {}
+
+local function RefreshWallCheckFilter()
+	table.clear(WallCheckIgnoreList)
+
+	if Character and Character.Parent then
+		table.insert(WallCheckIgnoreList, Character)
+	end
+
+	WallCheckParams.FilterDescendantsInstances = WallCheckIgnoreList
+end
+
+local function RaycastToTarget(Target: Instance, TargetPosition: Vector3): boolean
+	if not (Camera and Target and Target.Parent) then
+		return false
+	end
+
+	local Direction = TargetPosition - Camera.CFrame.Position
+	if Direction.Magnitude <= 0.001 then
+		return true
+	end
+
+	local Result = workspace:Raycast(Camera.CFrame.Position, Direction, WallCheckParams)
+	if Result == nil then
+		return true
+	end
+
+	return Result.Instance == Target or Result.Instance:IsDescendantOf(Target)
+end
+
+local function IsTargetVisible(Target: Instance): boolean
+	if not (Camera and Target and Target.Parent) then
+		return false
+	end
+
+	RefreshWallCheckFilter()
+
+	local Points = {}
+	local PointSet = {}
+
+	local function AddPosition(Position: Vector3?)
+		if typeof(Position) ~= "Vector3" then
+			return
+		end
+
+		local Key = string.format("%.4f,%.4f,%.4f", Position.X, Position.Y, Position.Z)
+		if PointSet[Key] then
+			return
+		end
+
+		PointSet[Key] = true
+		table.insert(Points, Position)
+	end
+
+	local function AddInstance(Instance: Instance?)
+		if not (Instance and Instance.Parent) then
+			return
+		end
+
+		if Instance:IsA("BasePart") then
+			AddPosition(Instance.Position)
+		elseif Instance:IsA("Attachment") or Instance:IsA("Bone") then
+			AddPosition(Instance.WorldPosition)
+		end
+	end
+
+	for _, Name in {
+		"Head",
+		"UpperTorso",
+		"LowerTorso",
+		"Torso",
+		"HumanoidRootPart",
+	} do
+		AddInstance(Target:FindFirstChild(Name, true))
+	end
+
+	local PivotSuccess, Pivot = pcall(function()
+		return GetPivot(Target)
+	end)
+	if PivotSuccess and typeof(Pivot) == "CFrame" then
+		AddPosition(Pivot.Position)
+	end
+
+	if #Points == 0 and Target:IsA("Model") then
+		local Success, BoundingBoxCFrame = pcall(function()
+			local CFrameValue = Target:GetBoundingBox()
+			return CFrameValue
+		end)
+
+		if Success and typeof(BoundingBoxCFrame) == "CFrame" then
+			AddPosition(BoundingBoxCFrame.Position)
+		end
+	end
+
+	for _, Position in Points do
+		if RaycastToTarget(Target, Position) then
+			return true
+		end
+	end
+
+	return false
+end
+
 local function UpdatePlayerVariables(newCharacter: Instance?, force: boolean?)
 	-- // Update Root Part // --
 	if force ~= true and Library.GlobalConfig.IgnoreCharacter == true then
@@ -582,6 +728,7 @@ local function UpdatePlayerVariables(newCharacter: Instance?, force: boolean?)
 	debug_print("Updating Player Variables...");
 	Character = newCharacter or Players.LocalPlayer.Character or Players.LocalPlayer.CharacterAdded:Wait();
 	RootPart = Character:WaitForChild("HumanoidRootPart", 2.5) or Character:WaitForChild("UpperTorso", 2.5) or Character:WaitForChild("Torso", 2.5) or Character.PrimaryPart or Character:WaitForChild("Head", 2.5);
+	RefreshWallCheckFilter()
 end
 task.spawn(UpdatePlayerVariables, nil, true);
 
@@ -1968,6 +2115,13 @@ function Library:Add(espSettings: ESPSettings)
 		end
 	end
 
+	-- // Setup Alive Check // --
+	function ESP:IsAlive(): boolean
+		if not (ESP and ESP.CurrentSettings and ESP.Deleted ~= true) then return false end
+
+		return InstancesLib.IsAlive(ESP.CurrentSettings.Model, Library.GlobalConfig.RequireHead)
+	end
+
 	-- // Setup Render Handler // --
 	function ESP:Render()
 		if not ESP then return end
@@ -1992,6 +2146,12 @@ function Library:Add(espSettings: ESPSettings)
 		ESP._LastDistance = DistanceFromPlayer
 
 		if DistanceFromPlayer > ESPSettings.MaxDistance then
+			Hide(true)
+			return
+		end
+
+		-- // Wall Check // --
+		if Library.GlobalConfig.WallCheck == true and not IsTargetVisible(ESPSettings.Model) then
 			Hide(true)
 			return
 		end
@@ -2082,7 +2242,11 @@ table.insert(Library.Connections, RunService.RenderStepped:Connect(function()
 
 		if 
 			ESP.Deleted == true or 
-			not (ESP.CurrentSettings and (ESP.CurrentSettings.Model and ESP.CurrentSettings.Model.Parent)) 
+			not (ESP.CurrentSettings and (ESP.CurrentSettings.Model and ESP.CurrentSettings.Model.Parent)) or
+			(
+				Library.GlobalConfig.AliveCheck == true and
+				not InstancesLib.IsAlive(ESP.CurrentSettings.Model, Library.GlobalConfig.RequireHead)
+			)
 		then
 			ESP:Destroy()
 			continue
