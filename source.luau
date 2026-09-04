@@ -57,6 +57,27 @@ export type Box2DESPSettings = {
 	Filled: boolean?,
 }
 
+export type HealthbarESPSettings = {
+	Enabled: boolean,
+
+	Color: Color3?,
+	LowColor: Color3?,
+	BackgroundColor: Color3?,
+	Thickness: number?,
+	Transparency: number?,
+
+	Style: ("Fill" | "Unicode")?,
+
+	Size: number?,
+	Offset: number?,
+	Side: ("Left" | "Right" | "Top")?,
+
+	ShowText: ("None" | "Numbers" | "Percentage" | "Bar")?,
+	BarLength: number?,
+
+	GetHealth: ((Model: Instance) -> (number, number))?,
+}
+
 export type Box3DESPSettings = {
 	Enabled: boolean,
 
@@ -105,6 +126,7 @@ export type ESPSettings = {
 	Tracer: TracerESPSettings?,
 	Arrow: ArrowESPSettings?,
 	Box2D: Box2DESPSettings?,
+	Healthbar: HealthbarESPSettings?,
 	Box3D: Box3DESPSettings?,
 	Skeleton: SkeletonESPSettings?,
 
@@ -131,6 +153,13 @@ export type ESPInstance = {
 	Hide: (self, Force: boolean?) -> nil,
 	ToggleVisibility: (self, Force: boolean?) -> nil,
 	SetEveryColor: (self, Color: Color3, IncludeComponents: boolean) -> nil,
+	SetHealthbar: (self, Settings: HealthbarESPSettings?) -> nil,
+	ConfigureHealthbar: (self, Settings: HealthbarESPSettings?) -> nil,
+	EnableHealthbar: (self, Settings: HealthbarESPSettings?) -> nil,
+	DisableHealthbar: (self) -> nil,
+	ToggleHealthbar: (self, Settings: HealthbarESPSettings?) -> nil,
+	DestroyHealthbar: (self) -> nil,
+	GetHealthbar: (self) -> HealthbarESPSettings?,
 	Destroy: (self) -> nil
 }
 
@@ -182,6 +211,26 @@ local DefaultSettings: ESPSettings = {
 		Thickness = 1,
 		Transparency = 0,
 		Filled = false,
+	},
+	Healthbar = {
+		Enabled = false,
+
+		Color = Color3.fromRGB(0, 255, 0),
+		LowColor = Color3.fromRGB(255, 0, 0),
+		BackgroundColor = Color3.fromRGB(0, 0, 0),
+		Thickness = 1,
+		Transparency = 0,
+
+		Style = "Fill",
+
+		Size = 4,
+		Offset = 2,
+		Side = "Left",
+
+		ShowText = "None",
+		BarLength = 10,
+
+		GetHealth = nil,
 	},
 	Box3D = {
 		Enabled = false,
@@ -469,6 +518,7 @@ local Library = {
 		Boxes2D = true,
 		Boxes3D = true,
 		Skeleton = true,
+		Healthbars = true,
 
 		Font = Enum.Font.RobotoCondensed
 	},
@@ -685,6 +735,80 @@ local function GetModelCorners(Model: Instance?)
 	return cornersOnScreen > 0, corners, screenCorners, minX, minY, maxX, maxY;
 end
 
+-- // Healthbar Helpers // --
+local function GetHealth(ESPSettings: ESPSettings): (number?, number?)
+	local HealthbarSettings = ESPSettings.Healthbar
+	if not HealthbarSettings then
+		return nil, nil
+	end
+
+	-- // Custom Health Source // --
+	if HealthbarSettings.GetHealth then
+		local success, health, maxHealth = pcall(HealthbarSettings.GetHealth, ESPSettings.Model)
+		if not success then
+			debug_warn("Healthbar.GetHealth errored:", health)
+			return nil, nil
+		end
+
+		if typeof(health) ~= "number" or typeof(maxHealth) ~= "number" or maxHealth <= 0 then
+			return nil, nil
+		end
+
+		return health, maxHealth
+	end
+
+	-- // Default: look for a Humanoid on the Model // --
+	local Humanoid = ESPSettings.Model:FindFirstChildOfClass("Humanoid")
+	if not Humanoid then
+		return nil, nil
+	end
+
+	local health = InstancesLib.TryGetProperty(Humanoid, "Health")
+	local maxHealth = InstancesLib.TryGetProperty(Humanoid, "MaxHealth")
+
+	if typeof(health) ~= "number" or typeof(maxHealth) ~= "number" or maxHealth <= 0 then
+		return nil, nil
+	end
+
+	return health, maxHealth
+end
+
+local function GetHealthText(ESPSettings: ESPSettings): string?
+	local HealthbarSettings = ESPSettings.Healthbar
+	if not (HealthbarSettings and HealthbarSettings.Enabled) then
+		return nil
+	end
+
+	local ShowText = HealthbarSettings.ShowText
+	if typeof(ShowText) ~= "string" then
+		return nil
+	end
+
+	ShowText = string.lower(ShowText)
+	if ShowText == "none" then
+		return nil
+	end
+
+	local Health, MaxHealth = GetHealth(ESPSettings)
+	if not (Health and MaxHealth) then
+		return nil
+	end
+
+	local Percent = math.clamp(Health / MaxHealth, 0, 1)
+
+	if ShowText == "numbers" then
+		return string.format("%d/%d", math.floor(Health), math.floor(MaxHealth))
+	elseif ShowText == "percentage" then
+		return string.format("%d%%", math.floor(Percent * 100 + 0.5))
+	elseif ShowText == "bar" then
+		local BarLength = math.max(1, math.floor(tonumber(HealthbarSettings.BarLength) or 10))
+		local Filled = math.floor(Percent * BarLength + 0.5)
+		return string.rep("█", Filled) .. string.rep("░", BarLength - Filled)
+	end
+
+	return nil
+end
+
 -- // ESP Instances // --
 local Components = {}; do
 	-- // Billboards // --
@@ -763,7 +887,31 @@ local Components = {}; do
 			if not BillboardEnabled then return end
 
 			-- // Update Visuals // --
+			local TextLines = { ESPSettings.Name }
+
 			if Library.GlobalConfig.Distance then
+				table.insert(TextLines, string.format(
+					'<font size="%d">[%s]</font>',
+					ESPSettings.TextSize - 3,
+					math.floor(DistanceFromPlayer)
+				));
+			end
+
+			-- // Healthbar text (Numbers / Percentage / Unicode Bar) // --
+			local HealthText = GetHealthText(ESPSettings)
+			if HealthText then
+				table.insert(TextLines, string.format(
+					'<font size="%d">%s</font>',
+					ESPSettings.TextSize - 3,
+					HealthText
+				));
+			end
+
+			BillboardText.Text = table.concat(TextLines, "\n");
+
+			BillboardText.Font = Library.GlobalConfig.Font;
+			BillboardText.TextColor3 = if Library.GlobalConfig.Rainbow then Library.RainbowColor else ESPSettings.Color;
+			BillboardText.TextSize = ESPSettings.TextSize;
 				SetBillboardTextProp(BillboardText, "Text", string.format(
 					'%s\n<font size="%d">[%s]</font>',
 					ESPSettings.Name,
@@ -1408,6 +1556,239 @@ local Components = {}; do
 		}) :: typeof(Box2DData)
 	end
 
+	-- // Healthbar // --
+	Components.Healthbar = function(ESP)
+		if Library.Destroyed == true then
+			debug_warn("Library is destroyed, please reload it.")
+			return
+		end
+
+		if not ESP then
+			return
+		end
+
+		if not ESP.CurrentSettings.Healthbar.Enabled then
+			return
+		end
+
+		debug_print("Creating Healthbar...")
+
+		-- // Screen-space bar // --
+		local Frame = InstancesLib.Create("Frame", {
+			Parent = MainGUI,
+			Name = (if DEBUG_ENABLED then "Healthbar_" else "") .. ESP.Index,
+			BorderSizePixel = 0,
+			Visible = false,
+			ZIndex = 2,
+			BackgroundColor3 = Color3.new(0, 0, 0),
+			BackgroundTransparency = 0,
+		})
+
+		local UIStroke = InstancesLib.Create("UIStroke", {
+			Parent = Frame,
+			Color = Color3.new(0, 0, 0),
+			Thickness = 1,
+			Transparency = 0,
+		})
+
+		local Fill = InstancesLib.Create("Frame", {
+			Parent = Frame,
+			Name = "Fill",
+			BorderSizePixel = 0,
+			ZIndex = 3,
+			BackgroundColor3 = Color3.new(0, 1, 0),
+			BackgroundTransparency = 0,
+			Size = UDim2.fromScale(1, 1),
+		})
+
+		local UnicodeBar = InstancesLib.Create("TextLabel", {
+			Parent = MainGUI,
+			Name = (if DEBUG_ENABLED then "HealthbarUnicode_" else "") .. ESP.Index,
+			Visible = false,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Text = "",
+			TextColor3 = Color3.new(0, 1, 0),
+			TextTransparency = 0,
+			TextSize = 12,
+			Font = Library.GlobalConfig.Font,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextYAlignment = Enum.TextYAlignment.Center,
+			ZIndex = 4,
+		})
+
+		local HealthbarData = {}
+
+		local function SetVisible(Visible: boolean)
+			if not Frame then return end
+			Frame.Visible = Visible
+			UnicodeBar.Visible = Visible
+		end
+
+		local function GetStyle(Settings): string
+			if typeof(Settings.Style) ~= "string" then
+				return "Fill"
+			end
+
+			local Style = string.lower(Settings.Style)
+			return if Style == "unicode" or Style == "text" then "Unicode" else "Fill"
+		end
+
+		local function GetSide(Settings): string
+			if typeof(Settings.Side) ~= "string" then
+				return "Left"
+			end
+
+			local Side = string.lower(Settings.Side)
+			if Side == "right" then
+				return "Right"
+			elseif Side == "top" then
+				return "Top"
+			end
+
+			return "Left"
+		end
+
+		HealthbarData.Destroy = function(self)
+			if not Frame then return end
+
+			Frame:Destroy()
+			UnicodeBar:Destroy()
+			Frame = nil
+			UnicodeBar = nil
+		end
+
+		HealthbarData.Update = function(self)
+			if not Frame then return end
+
+			if not ESP._LastScreenPos then
+				SetVisible(false)
+				return
+			end
+
+			local ESPSettings = ESP.CurrentSettings
+			local Settings = ESPSettings.Healthbar
+			local _, IsOnScreen = unpack(ESP._LastScreenPos)
+			local HealthbarEnabled = IsOnScreen == true
+				and Library.GlobalConfig.Healthbars == true
+				and Settings.Enabled == true
+
+			if not HealthbarEnabled then
+				SetVisible(false)
+				return
+			end
+
+			local Health, MaxHealth = GetHealth(ESPSettings)
+			if not (Health and MaxHealth) then
+				SetVisible(false)
+				return
+			end
+
+			local Percent = math.clamp(Health / MaxHealth, 0, 1)
+			local IsCornerOnScreen, _corners, _screenCorners, MinX, MinY, MaxX, MaxY = GetModelCorners(ESPSettings.Model)
+			if not IsCornerOnScreen then
+				SetVisible(false)
+				return
+			end
+
+			local Side = GetSide(Settings)
+			local Style = GetStyle(Settings)
+			local BarSize = math.max(1, tonumber(Settings.Size) or 4)
+			local BarOffset = tonumber(Settings.Offset) or 2
+			local Thickness = math.max(0, tonumber(Settings.Thickness) or 1)
+			local Transparency = math.clamp(tonumber(Settings.Transparency) or 0, 0, 1)
+			local Width = math.max(1, MaxX - MinX)
+			local Height = math.max(1, MaxY - MinY)
+
+			local Color = if typeof(Settings.Color) == "Color3"
+				then Settings.Color
+				else Color3.fromRGB(0, 255, 0)
+			local LowColor = if typeof(Settings.LowColor) == "Color3"
+				then Settings.LowColor
+				else Color
+			local BackgroundColor = if typeof(Settings.BackgroundColor) == "Color3"
+				then Settings.BackgroundColor
+				else Color3.new(0, 0, 0)
+			local CurrentColor = Color:Lerp(LowColor, 1 - Percent)
+
+			Frame.BackgroundColor3 = BackgroundColor
+			Frame.BackgroundTransparency = Transparency
+			UIStroke.Color = BackgroundColor
+			UIStroke.Thickness = Thickness
+			UIStroke.Transparency = Transparency
+			Fill.BackgroundColor3 = CurrentColor
+			Fill.BackgroundTransparency = Transparency
+
+			local BarLength = math.max(1, math.floor(tonumber(Settings.BarLength) or 10))
+			local Filled = math.floor(Percent * BarLength + 0.5)
+			UnicodeBar.Font = Library.GlobalConfig.Font
+			UnicodeBar.TextSize = math.max(1, math.floor(BarSize + 6))
+			UnicodeBar.TextColor3 = CurrentColor
+			UnicodeBar.TextTransparency = Transparency
+			UnicodeBar.Text = string.rep("█", Filled) .. string.rep("░", BarLength - Filled)
+
+			if Style == "Unicode" then
+				UnicodeBar.Size = UDim2.fromOffset(Width, math.max(1, BarSize + 4))
+				UnicodeBar.Position = UDim2.fromOffset(MinX, MinY - BarOffset - BarSize - 2)
+				Frame.Visible = false
+				UnicodeBar.Visible = true
+				return
+			end
+
+			if Side == "Top" then
+				Frame.Position = UDim2.fromOffset(MinX, MinY - BarOffset - BarSize)
+				Frame.Size = UDim2.fromOffset(Width, BarSize)
+
+				Fill.AnchorPoint = Vector2.new(0, 0)
+				Fill.Position = UDim2.fromScale(0, 0)
+				Fill.Size = UDim2.fromScale(Percent, 1)
+			else
+				local BarX = if Side == "Right"
+					then MaxX + BarOffset
+					else MinX - BarOffset - BarSize
+
+				Frame.Position = UDim2.fromOffset(BarX, MinY)
+				Frame.Size = UDim2.fromOffset(BarSize, Height)
+
+				Fill.AnchorPoint = Vector2.new(0, 1)
+				Fill.Position = UDim2.new(0, 0, 1, 0)
+				Fill.Size = UDim2.new(1, 0, Percent, 0)
+			end
+
+			Frame.Visible = true
+			UnicodeBar.Visible = false
+		end
+
+		return setmetatable({}, {
+			__newindex = function(table, key, value)
+				if not Frame then return end
+
+				if key == "Visible" then
+					assert(
+						type(value) == "boolean",
+						string.format("Visible; expected boolean, got %s", typeof(value))
+					)
+					Frame.Visible = value
+					UnicodeBar.Visible = value
+				else
+					rawset(HealthbarData, key, value)
+				end
+			end,
+
+			__index = function(table, key)
+				if not Frame then return nil end
+
+				if key == "Visible" then
+					return Frame.Visible or UnicodeBar.Visible
+				else
+					return rawget(HealthbarData, key)
+				end
+			end,
+
+			__iter = function(_) return next, HealthbarData end,
+			__metatable = "The metatable is locked"
+		}) :: typeof(HealthbarData)
+	end
 	-- // Box3D // --
 	Components.Box3D = function(ESP)
 		if Library.Destroyed == true then
@@ -1966,6 +2347,141 @@ function Library:Add(espSettings: ESPSettings)
 				ComponentTable.Color = Color;
 			end
 		end
+	end
+
+	-- // Setup Healthbar Helpers // --
+	local function MergeHealthbarSettings(Settings: HealthbarESPSettings?)
+		if Settings == nil then
+			return
+		end
+
+		assert(
+			type(Settings) == "table",
+			string.format("Healthbar settings; expected table, got %s", typeof(Settings))
+		)
+
+		local HealthbarSettings = ESP.CurrentSettings.Healthbar
+		if typeof(HealthbarSettings) ~= "table" then
+			HealthbarSettings = table.clone(DefaultSettings.Healthbar)
+			espSettings.Healthbar = HealthbarSettings
+		end
+
+		for Key, Value in Settings do
+			if Key == "Enabled" or Key == "Color" or Key == "LowColor" or Key == "BackgroundColor"
+				or Key == "Thickness" or Key == "Transparency" or Key == "Style" or Key == "Size"
+				or Key == "Offset" or Key == "Side" or Key == "ShowText" or Key == "BarLength"
+				or Key == "GetHealth" then
+				HealthbarSettings[Key] = Value
+			end
+		end
+
+		return HealthbarSettings
+	end
+
+	local function EnsureHealthbarComponent()
+		if ESP.Deleted == true or Library.Destroyed == true then
+			return nil
+		end
+
+		local Healthbar = ESP.Components["Healthbar"]
+		if Healthbar then
+			return Healthbar
+		end
+
+		Healthbar = Components.Healthbar(ESP)
+		if Healthbar then
+			ESP.Components["Healthbar"] = Healthbar
+		end
+
+		return Healthbar
+	end
+
+	function ESP:SetHealthbar(Settings: HealthbarESPSettings?)
+		if not (ESP and ESP.CurrentSettings and ESP.Deleted ~= true) then return end
+
+		local HealthbarSettings = MergeHealthbarSettings(Settings)
+		if not HealthbarSettings then
+			HealthbarSettings = ESP.CurrentSettings.Healthbar
+		end
+
+		if typeof(HealthbarSettings) ~= "table" then
+			HealthbarSettings = table.clone(DefaultSettings.Healthbar)
+			espSettings.Healthbar = HealthbarSettings
+		end
+
+		if HealthbarSettings.Enabled == true then
+			EnsureHealthbarComponent()
+		end
+	end
+
+	function ESP:ConfigureHealthbar(Settings: HealthbarESPSettings?)
+		ESP:SetHealthbar(Settings)
+	end
+
+	function ESP:EnableHealthbar(Settings: HealthbarESPSettings?)
+		if not (ESP and ESP.CurrentSettings and ESP.Deleted ~= true) then return end
+
+		local HealthbarSettings = MergeHealthbarSettings(Settings)
+		if not HealthbarSettings then
+			HealthbarSettings = ESP.CurrentSettings.Healthbar
+		end
+
+		if typeof(HealthbarSettings) ~= "table" then
+			HealthbarSettings = table.clone(DefaultSettings.Healthbar)
+			espSettings.Healthbar = HealthbarSettings
+		end
+
+		HealthbarSettings.Enabled = true
+		EnsureHealthbarComponent()
+	end
+
+	function ESP:DisableHealthbar()
+		if not (ESP and ESP.CurrentSettings and ESP.Deleted ~= true) then return end
+
+		local HealthbarSettings = ESP.CurrentSettings.Healthbar
+		if typeof(HealthbarSettings) == "table" then
+			HealthbarSettings.Enabled = false
+		end
+
+		local Healthbar = ESP.Components["Healthbar"]
+		if Healthbar then
+			Healthbar.Visible = false
+		end
+	end
+
+	function ESP:ToggleHealthbar(Settings: HealthbarESPSettings?)
+		if not (ESP and ESP.CurrentSettings and ESP.Deleted ~= true) then return end
+
+		local HealthbarSettings = ESP.CurrentSettings.Healthbar
+		if typeof(HealthbarSettings) ~= "table" or HealthbarSettings.Enabled ~= true then
+			ESP:EnableHealthbar(Settings)
+		else
+			ESP:DisableHealthbar()
+		end
+	end
+
+	function ESP:DestroyHealthbar()
+		if not (ESP and ESP.CurrentSettings and ESP.Deleted ~= true) then return end
+
+		local Healthbar = ESP.Components["Healthbar"]
+		if Healthbar and Healthbar.Destroy then
+			Healthbar:Destroy()
+		end
+
+		ESP.Components["Healthbar"] = nil
+
+		local HealthbarSettings = ESP.CurrentSettings.Healthbar
+		if typeof(HealthbarSettings) == "table" then
+			HealthbarSettings.Enabled = false
+		end
+	end
+
+	function ESP:GetHealthbar(): HealthbarESPSettings?
+		if not (ESP and ESP.CurrentSettings and ESP.Deleted ~= true) then
+			return nil
+		end
+
+		return ESP.CurrentSettings.Healthbar
 	end
 
 	-- // Setup Render Handler // --
